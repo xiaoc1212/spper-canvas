@@ -1,0 +1,5 @@
+{
+  "name": "ConfigVault",
+  "description": "一个轻量级的、Notion风格的三栏式开发者配置、API密钥和项目片段管理器，支持一键复制。",
+  "requestFramePermissions": []
+}
