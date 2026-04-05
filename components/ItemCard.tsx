@@ -482,8 +482,7 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
     const dragStartRef = useRef<{ mx: number; my: number; ix: number; iy: number } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [snapGlow, setSnapGlow] = useState<'left'|'right'|'top'|'bottom'|null>(null);
-    const CARD_WIDTH = item.type === 'mindmap' ? 192 : 256;
-    const CARD_H = item.type === 'mindmap' ? 44 : 120;
+    const containerRef = useRef<HTMLDivElement>(null);
     const SNAP_GAP = 10;
     const SNAP_DETECT = 30;
 
@@ -494,35 +493,57 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
         }
     }, [item.x, item.y, x, y]);
 
-    // Find snap edges from all other cards
+    // Get real DOM dimensions of this card
+    const getMySize = () => {
+        if (containerRef.current) {
+            return { w: containerRef.current.offsetWidth, h: containerRef.current.offsetHeight };
+        }
+        // fallback estimates per type
+        const w = item.type === 'mindmap' ? 200 : item.type === 'code' ? 320 : 280;
+        const h = item.type === 'mindmap' ? 50 : 130;
+        return { w, h };
+    };
+
+    // Get size for another card (we don't have its ref, use type-based estimates)
+    const getOtherSize = (other: any) => {
+        switch (other.type) {
+            case 'mindmap':   return { w: 200, h: 50 };
+            case 'code':      return { w: 320, h: 120 };
+            case 'note':      return { w: 260, h: 180 };
+            case 'image':     return { w: 280, h: 200 };
+            case 'password':  return { w: 280, h: 140 };
+            case 'link':      return { w: 280, h: 100 };
+            default:          return { w: 280, h: 110 }; // text
+        }
+    };
+
+    // Compute snap target from current position
     const computeSnap = (cx: number, cy: number) => {
         if (!allItems || !snapMode) return { snapX: cx, snapY: cy, glow: null as string | null, guides: [] as any[] };
         if (isSelected && selectedIds && selectedIds.size > 1) return { snapX: cx, snapY: cy, glow: null, guides: [] };
 
+        const { w: myW, h: myH } = getMySize();
         let snapX = cx, snapY = cy;
         let bestDistH = Infinity, bestDistV = Infinity;
         let glow: string | null = null;
         const guides: {type:'h'|'v'; pos:number}[] = [];
-        const myR = cx + CARD_WIDTH, myB = cy + CARD_H;
+        const myR = cx + myW, myB = cy + myH;
 
         for (const other of allItems) {
             if (other.id === item.id) continue;
-            const ow = other.type === 'mindmap' ? 192 : 256;
-            const oh = other.type === 'mindmap' ? 44 : 120;
+            const { w: ow, h: oh } = getOtherSize(other);
             const oL = other.x || 0, oR = oL + ow, oT = other.y || 0, oB = oT + oh;
 
-            // Check vertical overlap (side-by-side candidates)
-            const vOverlap = Math.min(cy + CARD_H, oB) - Math.max(cy, oT);
+            // Vertical overlap => side-by-side candidates
+            const vOverlap = Math.min(cy + myH, oB) - Math.max(cy, oT);
             if (vOverlap > 5) {
-                // Right edge -> other left edge
                 const d1 = Math.abs(myR - oL);
                 if (d1 < SNAP_DETECT && d1 < bestDistH) {
                     bestDistH = d1;
-                    snapX = oL - SNAP_GAP - CARD_WIDTH;
+                    snapX = oL - SNAP_GAP - myW;
                     glow = 'right';
                     guides.push({ type: 'v', pos: oL - SNAP_GAP / 2 });
                 }
-                // Left edge -> other right edge
                 const d2 = Math.abs(cx - oR);
                 if (d2 < SNAP_DETECT && d2 < bestDistH) {
                     bestDistH = d2;
@@ -530,20 +551,20 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
                     glow = 'left';
                     guides.push({ type: 'v', pos: oR + SNAP_GAP / 2 });
                 }
+                // Left-edge alignment
+                if (Math.abs(cx - oL) < 8) { snapX = oL; guides.push({ type: 'v', pos: oL }); }
             }
 
-            // Check horizontal overlap (stacked candidates)
-            const hOverlap = Math.min(cx + CARD_WIDTH, oR) - Math.max(cx, oL);
+            // Horizontal overlap => stacked candidates
+            const hOverlap = Math.min(cx + myW, oR) - Math.max(cx, oL);
             if (hOverlap > 5) {
-                // Bottom edge -> other top edge
                 const d3 = Math.abs(myB - oT);
                 if (d3 < SNAP_DETECT && d3 < bestDistV) {
                     bestDistV = d3;
-                    snapY = oT - SNAP_GAP - CARD_H;
+                    snapY = oT - SNAP_GAP - myH;
                     glow = 'bottom';
                     guides.push({ type: 'h', pos: oT - SNAP_GAP / 2 });
                 }
-                // Top edge -> other bottom edge
                 const d4 = Math.abs(cy - oB);
                 if (d4 < SNAP_DETECT && d4 < bestDistV) {
                     bestDistV = d4;
@@ -551,11 +572,9 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
                     glow = 'top';
                     guides.push({ type: 'h', pos: oB + SNAP_GAP / 2 });
                 }
+                // Top-edge alignment
+                if (Math.abs(cy - oT) < 8) { snapY = oT; guides.push({ type: 'h', pos: oT }); }
             }
-
-            // Also snap to alignment (same left/top edge)
-            if (Math.abs(cx - oL) < 8 && vOverlap > 5) { snapX = oL; guides.push({ type: 'v', pos: oL }); }
-            if (Math.abs(cy - oT) < 8 && hOverlap > 5) { snapY = oT; guides.push({ type: 'h', pos: oT }); }
         }
         return { snapX, snapY, glow, guides };
     };
@@ -563,28 +582,25 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
     // Prevent overlap: push card out of all other cards
     const preventOverlap = (cx: number, cy: number): { x: number; y: number } => {
         if (!allItems || !snapMode) return { x: cx, y: cy };
+        const { w: myW, h: myH } = getMySize();
         let px = cx, py = cy;
         for (const other of allItems) {
             if (other.id === item.id) continue;
-            const ow = other.type === 'mindmap' ? 192 : 256;
-            const oh = other.type === 'mindmap' ? 44 : 120;
+            const { w: ow, h: oh } = getOtherSize(other);
             const oL = other.x || 0, oT = other.y || 0;
             const oR = oL + ow, oB = oT + oh;
-
-            // Check overlap
-            const overlapX = Math.min(px + CARD_WIDTH, oR) - Math.max(px, oL);
-            const overlapY = Math.min(py + CARD_H, oB) - Math.max(py, oT);
+            const overlapX = Math.min(px + myW, oR) - Math.max(px, oL);
+            const overlapY = Math.min(py + myH, oB) - Math.max(py, oT);
             if (overlapX > 0 && overlapY > 0) {
-                // Push out via shortest path
-                const pushLeft = (px + CARD_WIDTH) - oL + SNAP_GAP;
+                const pushLeft  = (px + myW) - oL + SNAP_GAP;
                 const pushRight = oR - px + SNAP_GAP;
-                const pushUp = (py + CARD_H) - oT + SNAP_GAP;
-                const pushDown = oB - py + SNAP_GAP;
-                const minPush = Math.min(pushLeft, pushRight, pushUp, pushDown);
-                if (minPush === pushLeft) px -= pushLeft;
+                const pushUp    = (py + myH) - oT + SNAP_GAP;
+                const pushDown  = oB - py + SNAP_GAP;
+                const minPush   = Math.min(pushLeft, pushRight, pushUp, pushDown);
+                if      (minPush === pushLeft)  px -= pushLeft;
                 else if (minPush === pushRight) px += pushRight;
-                else if (minPush === pushUp) py -= pushUp;
-                else py += pushDown;
+                else if (minPush === pushUp)    py -= pushUp;
+                else                            py += pushDown;
             }
         }
         return { x: px, y: py };
@@ -603,6 +619,8 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
         if (onDragStart) onDragStart();
         document.body.style.userSelect = 'none';
 
+        const { w: myW } = getMySize();
+
         const onMove = (ev: PointerEvent) => {
             if (!dragStartRef.current) return;
             const { mx, my, ix, iy } = dragStartRef.current;
@@ -616,11 +634,10 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
                 } else return;
             }
 
-            let newX = Math.max(0, Math.min(CANVAS_SIZE - CARD_WIDTH, ix + dx));
+            let newX = Math.max(0, Math.min(CANVAS_SIZE - myW, ix + dx));
             let newY = Math.max(0, Math.min(CANVAS_SIZE - 200, iy + dy));
 
             if (snapMode) {
-                // Show snap preview (guides + glow) but DON'T snap position yet
                 const { glow, guides } = computeSnap(newX, newY);
                 setSnapGlow(glow as any);
                 if (onSetGuides) onSetGuides(guides);
@@ -650,15 +667,12 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
                 let finalY = y.get();
 
                 if (snapMode && !(isSelected && selectedIds && selectedIds.size > 1)) {
-                    // 1. Snap to nearest edge
                     const { snapX, snapY } = computeSnap(finalX, finalY);
                     finalX = snapX;
                     finalY = snapY;
-                    // 2. Prevent any remaining overlap
                     const pushed = preventOverlap(finalX, finalY);
                     finalX = pushed.x;
                     finalY = pushed.y;
-                    // Animate to final position
                     x.set(finalX);
                     y.set(finalY);
                 }
@@ -680,21 +694,21 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
 
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
-    }, [item, isSelected, onSelect, x, y, canvasScale, allItems, selectedIds, onUpdate, onUpdateMultiple, onSetGuides, CARD_WIDTH, CARD_H, snapMode]);
+    }, [item, isSelected, onSelect, x, y, canvasScale, allItems, selectedIds, onUpdate, onUpdateMultiple, onSetGuides, snapMode]);
 
-    // Glow effect
     const glowStyle: React.CSSProperties = {};
     if (snapGlow && isDragging) {
-        const c = 'rgba(59, 130, 246, 0.6)';
-        if (snapGlow === 'right')  glowStyle.boxShadow = `0 0 14px 4px ${c}, inset -4px 0 10px -4px ${c}`;
-        if (snapGlow === 'left')   glowStyle.boxShadow = `0 0 14px 4px ${c}, inset 4px 0 10px -4px ${c}`;
-        if (snapGlow === 'bottom') glowStyle.boxShadow = `0 0 14px 4px ${c}, inset 0 -4px 10px -4px ${c}`;
-        if (snapGlow === 'top')    glowStyle.boxShadow = `0 0 14px 4px ${c}, inset 0 4px 10px -4px ${c}`;
+        const c = 'rgba(59, 130, 246, 0.65)';
+        if (snapGlow === 'right')  glowStyle.boxShadow = `0 0 16px 4px ${c}, inset -5px 0 12px -5px ${c}`;
+        if (snapGlow === 'left')   glowStyle.boxShadow = `0 0 16px 4px ${c}, inset 5px 0 12px -5px ${c}`;
+        if (snapGlow === 'bottom') glowStyle.boxShadow = `0 0 16px 4px ${c}, inset 0 -5px 12px -5px ${c}`;
+        if (snapGlow === 'top')    glowStyle.boxShadow = `0 0 16px 4px ${c}, inset 0 5px 12px -5px ${c}`;
     }
 
     return (
         <motion.div
-            style={{ x, y, position: 'absolute', touchAction: 'none', ...glowStyle, borderRadius: snapGlow && isDragging ? '12px' : undefined, transition: snapGlow ? 'box-shadow 0.15s ease' : 'none' }}
+            ref={containerRef}
+            style={{ x, y, position: 'absolute', touchAction: 'none', ...glowStyle, borderRadius: snapGlow && isDragging ? '14px' : undefined, transition: snapGlow ? 'box-shadow 0.12s ease' : 'none' }}
             animate={isDragging ? { scale: 1.02 } : { scale: 1 }}
             transition={{ scale: { type: 'spring', stiffness: 400, damping: 25 } }}
             onPointerDown={handlePointerDown}
