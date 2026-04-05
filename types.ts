@@ -1,42 +1,30 @@
 export type ItemType = 'text' | 'password' | 'code' | 'image' | 'note' | 'mindmap' | 'link';
 
-export interface Card {
+export interface SecretItem {
   id: string;
-  boardId: string; // Foreign key linking back to its Board
   label: string;
   value: string;
   type: ItemType;
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   width?: number;
   height?: number;
   isNew?: boolean;
-  parentId?: string; // used for mindmap connections
+  parentId?: string;
   noteColor?: number;
 }
 
-export interface Connector {
+export interface ProjectGroup {
   id: string;
-  sourceId: string;
-  targetId: string;
-}
-
-export interface Board {
-  id: string;
-  projectId: string; // Foreign key linking back to Project
   name: string;
+  items: SecretItem[];
 }
 
 export interface Project {
   id: string;
   name: string;
-  icon: string;
-}
-
-export interface CameraState {
-  x: number;
-  y: number;
-  scale: number;
+  icon: string; // Lucide icon name or emoji
+  groups: ProjectGroup[];
 }
 
 // Just for props and state management

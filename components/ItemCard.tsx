@@ -1,9 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
-import { Card, ItemType } from '../types';
-import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, GripVertical, Link2, ExternalLink } from 'lucide-react';
-import { motion } from 'motion/react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { SecretItem as Card, ItemType } from '../types';
+import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, GripVertical, Link2, ExternalLink, Palette } from 'lucide-react';
+
+import { motion, useMotionValue } from 'motion/react';
 import TextareaAutosize from 'react-textarea-autosize';
+
+const CANVAS_SIZE = 15000;
 
 // Note color presets
 const NOTE_COLORS = [
@@ -99,8 +102,8 @@ export const ItemCard: React.FC<{
                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                 className="relative group/mm min-w-[200px]"
             >
-                <div className="bg-gradient-to-br from-[#1e293b]/90 to-[#0f172a]/90 backdrop-blur-xl border border-white/10 hover:border-white/20 rounded-2xl shadow-xl shadow-black/20 transition-all text-gray-200">
-                    <div className="px-4 py-3 text-[14px] cursor-grab active:cursor-grabbing w-full min-h-[44px] flex items-center justify-center text-center">
+                <div className="bg-[#18181b] border border-white/10 hover:border-white/20 rounded-md shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all text-gray-200">
+                    <div className="px-4 py-3 text-[14px] w-full min-h-[44px] flex items-center justify-center text-center">
                         {isEditingContent ? (
                             <TextareaAutosize
                                 autoFocus
@@ -112,7 +115,7 @@ export const ItemCard: React.FC<{
                                 onPointerDownCapture={e => e.stopPropagation()}
                             />
                         ) : (
-                            <div onClick={() => setIsEditingContent(true)} className="w-full break-words font-medium">
+                            <div onDoubleClick={() => setIsEditingContent(true)} className="w-full break-words font-medium">
                                 {item.value || <span className="text-gray-500/70 italic font-normal">中心主题</span>}
                             </div>
                         )}
@@ -122,16 +125,16 @@ export const ItemCard: React.FC<{
                 {onAddChild && !isEditingContent && (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onAddChild(); }}
-                        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 bg-teal-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-110 hover:bg-teal-400 shadow-lg transition-all z-50 ring-2 ring-[#0f172a] cursor-pointer"
+                        className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-teal-500 ring-[#18181b] text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-110 hover:bg-teal-400 shadow-lg transition-all z-50 ring-2 ring-[#0f172a] cursor-pointer"
                         title="添加子节点"
-                    ><Plus size={14} /></button>
+                    ><Plus size={12} /></button>
                 )}
                 {onAddSibling && !isEditingContent && (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onAddSibling(); }}
-                        className="absolute left-1/2 -bottom-3.5 -translate-x-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-400 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-110 shadow-lg transition-all z-50 ring-2 ring-[#0f172a] cursor-pointer"
+                        className="absolute left-1/2 -bottom-2.5 -translate-x-1/2 w-5 h-5 bg-blue-500 ring-[#18181b] hover:bg-blue-400 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-110 shadow-lg transition-all z-50 ring-2 ring-[#0f172a] cursor-pointer"
                         title="添加同级节点"
-                    ><Plus size={14} /></button>
+                    ><Plus size={12} /></button>
                 )}
                 <div className="absolute top-[-10px] right-[-10px] opacity-0 group-hover/mm:opacity-100 transition-opacity z-50">
                     <button 
@@ -197,7 +200,7 @@ export const ItemCard: React.FC<{
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                 className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} rounded-2xl overflow-hidden transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 bg-[#1e293b]/50 backdrop-blur-xl border border-white/10 hover:border-white/20 relative`}
             >
-                <div className="relative bg-transparent flex items-center justify-center cursor-grab active:cursor-grabbing min-h-[120px]">
+                <div className="relative bg-transparent flex items-center justify-center min-h-[120px]">
                     {item.value ? (
                         <div className="relative w-full h-auto">
                             <img src={item.value} alt={item.label} className="w-full h-auto object-cover block" referrerPolicy="no-referrer" />
@@ -210,7 +213,7 @@ export const ItemCard: React.FC<{
                         </div>
                     )}
                     <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <button onClick={() => setIsEditing(true)} className="p-1.5 text-white/80 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-md transition-colors" title="编辑"><Type size={13} /></button>
+                        
                         <button onClick={onDelete} className="p-1.5 text-red-400 bg-black/40 hover:bg-black/60 hover:text-red-300 backdrop-blur-md rounded-md transition-colors" title="删除"><Trash2 size={13} /></button>
                     </div>
                 </div>
@@ -233,14 +236,14 @@ export const ItemCard: React.FC<{
                 className={`group ${isCanvasView ? 'w-[260px]' : isGridView ? 'h-full' : 'mb-3'} rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all relative`}
                 style={{ backgroundColor: currentBg, border: cIdx === 5 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}
             >
-                <div className="flex items-center justify-between px-3 pt-2 pb-1 cursor-grab active:cursor-grabbing select-none" style={{ color: currentText }}>
+                <div className="flex items-center justify-between px-3 pt-2 pb-1  select-none" style={{ color: currentText }}>
                     <div className="flex items-center gap-1.5 overflow-hidden opacity-70">
                         <StickyNote size={13} className="flex-shrink-0" />
                         {item.label && <span className="text-[11px] font-semibold truncate uppercase tracking-wider select-none">{item.label}</span>}
                     </div>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => setShowColorPicker(!showColorPicker)} className="p-1 px-1.5 hover:bg-black/10 rounded-sm transition-colors" title="颜色"><Palette size={13} /></button>
-                        <button onClick={() => setIsEditing(true)} className="p-1 px-1.5 hover:bg-black/10 rounded-sm transition-colors" title="编辑"><Type size={13} /></button>
+                        
                         <button onClick={onDelete} className="p-1 px-1.5 hover:bg-black/10 hover:text-red-700 rounded-sm transition-colors" title="删除"><Trash2 size={13} /></button>
                     </div>
                 </div>
@@ -272,7 +275,7 @@ export const ItemCard: React.FC<{
                         />
                     ) : (
                         <div 
-                            onClick={() => setIsEditingContent(true)}
+                            onDoubleClick={() => setIsEditingContent(true)}
                             className={`text-[14px] leading-relaxed whitespace-pre-wrap cursor-text min-h-[120px] ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
                             style={{ color: currentText }}
                         >
@@ -291,7 +294,7 @@ export const ItemCard: React.FC<{
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.15 }}
-                className={`group ${isCanvasView ? 'w-auto min-w-[300px] max-w-[500px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all relative cursor-grab active:cursor-grabbing`}
+                className={`group ${isCanvasView ? 'w-auto min-w-[300px] max-w-[500px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all relative `}
             >
                 <div className="flex items-center justify-between px-3 py-1.5 bg-[#27272a] border-b border-white/5 select-none">
                     <span className="text-[11px] font-mono font-medium text-gray-400 select-none uppercase tracking-widest">{lang}</span>
@@ -299,7 +302,7 @@ export const ItemCard: React.FC<{
                         <button onClick={handleCopy} className={`p-1 rounded-sm transition-colors ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white hover:bg-[#3f3f46]'}`} title="复制">
                             {copied ? <Check size={13} /> : <Copy size={13} />}
                         </button>
-                        <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title="编辑"><Type size={13} /></button>
+                        
                         <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded-sm hover:bg-[#3f3f46]" title="删除"><Trash2 size={13} /></button>
                     </div>
                 </div>
@@ -315,7 +318,7 @@ export const ItemCard: React.FC<{
                             onPointerDownCapture={e => e.stopPropagation()}
                         />
                     ) : (
-                        <div onClick={() => setIsEditingContent(true)}
+                        <div onDoubleClick={() => setIsEditingContent(true)}
                             className={`text-[13px] text-gray-300 font-mono whitespace-pre cursor-text min-h-[40px] selection:bg-blue-500/30 ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
                         >
                             {item.value || <span className="text-gray-600 italic select-none">点击输入代码...</span>}
@@ -332,10 +335,10 @@ export const ItemCard: React.FC<{
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.15 }}
-                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all p-4 flex flex-col cursor-grab active:cursor-grabbing relative`}
+                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all p-4 flex flex-col  relative`}
             >
                 <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title="编辑"><Type size={13} /></button>
+                    
                     <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded-sm hover:bg-[#3f3f46]" title="删除"><Trash2 size={13} /></button>
                 </div>
                 <div className="flex items-center gap-2 mb-3 select-none">
@@ -359,7 +362,7 @@ export const ItemCard: React.FC<{
                             onPointerDownCapture={e => e.stopPropagation()}
                         />
                     ) : (
-                        <div onClick={() => setIsEditingContent(true)} className="flex items-center justify-between cursor-text bg-[#27272a] border border-white/5 rounded px-3 py-1.5 group/pwd hover:bg-[#3f3f46] transition-colors">
+                        <div onDoubleClick={() => setIsEditingContent(true)} className="flex items-center justify-between cursor-text bg-[#27272a] border border-white/5 rounded px-3 py-1.5 group/pwd hover:bg-[#3f3f46] transition-colors">
                             <code className="text-[13px] font-mono text-gray-300 flex-1 truncate select-none">
                                 {revealed ? item.value : '•'.repeat(Math.min(item.value.length, 24) || 12)}
                             </code>
@@ -393,10 +396,10 @@ export const ItemCard: React.FC<{
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.15 }}
-                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all cursor-grab active:cursor-grabbing flex flex-col relative`}
+                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all  flex flex-col relative`}
             >
                 <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button onClick={() => setIsEditing(true)} className="p-1.5 text-gray-300 bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 rounded-sm transition-colors" title="编辑"><Type size={13} /></button>
+                    
                     <button onClick={onDelete} className="p-1.5 text-red-400 bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 rounded-sm transition-colors" title="删除"><Trash2 size={13} /></button>
                 </div>
 
@@ -432,7 +435,7 @@ export const ItemCard: React.FC<{
             transition={{ duration: 0.15 }}
             className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all flex flex-col`}
         >
-            <div className="flex items-center justify-between px-3 py-2 bg-[#27272a] border-b border-white/5 cursor-grab active:cursor-grabbing select-none">
+            <div className="flex items-center justify-between px-3 py-2 bg-[#27272a] border-b border-white/5  select-none">
                 <div className="flex items-center gap-2 overflow-hidden">
                     <Type size={13} className="text-gray-400" />
                     {item.label ? (
@@ -445,7 +448,7 @@ export const ItemCard: React.FC<{
                     <button onClick={handleCopy} className={`p-1 rounded-sm transition-colors ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white hover:bg-[#3f3f46]'}`} title="复制">
                         {copied ? <Check size={13} /> : <Copy size={13} />}
                     </button>
-                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title="编辑"><Type size={13} /></button>
+                    
                     <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded-sm hover:bg-[#3f3f46]" title="删除"><Trash2 size={13} /></button>
                 </div>
             </div>
@@ -461,7 +464,7 @@ export const ItemCard: React.FC<{
                         onPointerDownCapture={e => e.stopPropagation()}
                     />
                 ) : (
-                    <div onClick={() => setIsEditingContent(true)}
+                    <div onDoubleClick={() => setIsEditingContent(true)}
                         className={`text-[13px] leading-relaxed text-gray-300 break-words cursor-text ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
                     >
                         {item.value || <span className="text-gray-600 italic">点击输入文本...</span>}
@@ -472,7 +475,7 @@ export const ItemCard: React.FC<{
     );
 };
 
-const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild, onAddSibling, group, selectedIds, onUpdateMultiple, handleCopy, onDeleteItem, allItems, onSetGuides, canvasScale = 1, onDragStart }: any) => {
+export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild, onAddSibling, group, selectedIds, onUpdateMultiple, handleCopy, onDeleteItem, allItems, onSetGuides, canvasScale = 1, onDragStart }: any) => {
     const x = useMotionValue(item.x || 0);
     const y = useMotionValue(item.y || 0);
     const isDraggingRef = useRef(false);
@@ -587,7 +590,7 @@ const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild, onAdd
                 e.stopPropagation();
                 e.nativeEvent.stopPropagation();
             }}
-            className={`${isDragging ? 'z-30' : 'z-10'} hover:z-20 nodrag ${isSelected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background rounded-xl' : ''}`}
+            className={` ${isDragging ? 'z-30' : 'z-10'} hover:z-20 nodrag ${isSelected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background rounded-xl' : ''}`}
         >
             <ItemCard 
                 item={item} 
