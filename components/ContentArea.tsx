@@ -353,11 +353,11 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                       const reader = new FileReader();
                       reader.onload = (ev) => {
                           const base64 = ev.target?.result as string;
-                          let x = 100, y = 100;
+                          let x = CANVAS_SIZE / 2 - 128, y = CANVAS_SIZE / 2 - 50;
                           if (outerScrollRef.current) {
                               const rect = outerScrollRef.current.getBoundingClientRect();
                               x = (rect.width / 2 + outerScrollRef.current.scrollLeft) / canvasScale - 128;
-                              y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 100;
+                              y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 50;
                           }
                           onAddItem({ id: crypto.randomUUID(), label: '', value: base64, type: 'image', x, y });
                       };
@@ -583,11 +583,11 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
   };
 
   const handleQuickAdd = (type: ItemType) => {
-      let x = 100, y = 100;
+      let x = CANVAS_SIZE / 2 - 128, y = CANVAS_SIZE / 2 - 50;
       if (outerScrollRef.current) {
           const rect = outerScrollRef.current.getBoundingClientRect();
           x = (rect.width / 2 + outerScrollRef.current.scrollLeft) / canvasScale - 128;
-          y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 100;
+          y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 50;
       }
       onAddItem({ id: crypto.randomUUID(), label: type === 'mindmap' ? '中心主题' : '', value: '', type, x, y, isNew: true });
   };
@@ -595,11 +595,11 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (newItemType !== 'image' || newItemValue) {
-      let x = 100, y = 100;
+      let x = CANVAS_SIZE / 2 - 128, y = CANVAS_SIZE / 2 - 50;
       if (viewMode === 'canvas' && outerScrollRef.current) {
           const rect = outerScrollRef.current.getBoundingClientRect();
           x = (rect.width / 2 + outerScrollRef.current.scrollLeft) / canvasScale - 128;
-          y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 100;
+          y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 50;
       }
       onAddItem({ id: crypto.randomUUID(), label: newItemLabel, value: newItemValue, type: newItemType, x, y });
       setNewItemLabel('');
@@ -615,8 +615,8 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
               label: item.label,
               value: item.value,
               type: item.type,
-              x: 100 + (idx * 20),
-              y: 100 + (idx * 20)
+              x: CANVAS_SIZE / 2 - 128 + (idx * 20),
+              y: CANVAS_SIZE / 2 - 50 + (idx * 20)
           });
       });
   };

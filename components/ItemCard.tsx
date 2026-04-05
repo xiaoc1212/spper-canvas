@@ -533,6 +533,35 @@ export const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild
             newX = Math.max(0, Math.min(CANVAS_SIZE - CARD_WIDTH, newX));
             newY = Math.max(0, Math.min(CANVAS_SIZE - 200, newY));
 
+            // ---- Snap-to-align with 5px gap ----
+            const SNAP_GAP = 5;
+            const SNAP_DIST = 8;
+            const CARD_H = item.type === 'mindmap' ? 44 : 120;
+            const myL = newX, myR = newX + CARD_WIDTH, myT = newY, myB = newY + CARD_H;
+            const newGuides = [];
+
+            if (allItems && !(isSelected && selectedIds && selectedIds.size > 1)) {
+                for (const other of allItems) {
+                    if (other.id === item.id) continue;
+                    const ow = other.type === 'mindmap' ? 192 : 256;
+                    const oh = other.type === 'mindmap' ? 44 : 120;
+                    const oL = other.x || 0, oR = oL + ow, oT = other.y || 0, oB = oT + oh;
+
+                    // Horizontal snaps
+                    if (Math.abs(myR - (oL - SNAP_GAP)) < SNAP_DIST) { newX = oL - SNAP_GAP - CARD_WIDTH; newGuides.push({ type: 'v', pos: oL - SNAP_GAP }); }
+                    if (Math.abs(myL - (oR + SNAP_GAP)) < SNAP_DIST) { newX = oR + SNAP_GAP; newGuides.push({ type: 'v', pos: oR + SNAP_GAP }); }
+                    if (Math.abs(myL - oL) < SNAP_DIST) { newX = oL; newGuides.push({ type: 'v', pos: oL }); }
+                    if (Math.abs(myR - oR) < SNAP_DIST) { newX = oR - CARD_WIDTH; newGuides.push({ type: 'v', pos: oR }); }
+
+                    // Vertical snaps
+                    if (Math.abs(myB - (oT - SNAP_GAP)) < SNAP_DIST) { newY = oT - SNAP_GAP - CARD_H; newGuides.push({ type: 'h', pos: oT - SNAP_GAP }); }
+                    if (Math.abs(myT - (oB + SNAP_GAP)) < SNAP_DIST) { newY = oB + SNAP_GAP; newGuides.push({ type: 'h', pos: oB + SNAP_GAP }); }
+                    if (Math.abs(myT - oT) < SNAP_DIST) { newY = oT; newGuides.push({ type: 'h', pos: oT }); }
+                    if (Math.abs(myB - oB) < SNAP_DIST) { newY = oB - CARD_H; newGuides.push({ type: 'h', pos: oB }); }
+                }
+            }
+            if (onSetGuides) onSetGuides(newGuides);
+
             x.set(newX);
             y.set(newY);
 
