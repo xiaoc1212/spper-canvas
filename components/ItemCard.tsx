@@ -6,7 +6,7 @@ import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, Layo
 import { motion, useMotionValue } from 'motion/react';
 import TextareaAutosize from 'react-textarea-autosize';
 
-const CANVAS_SIZE = 15000;
+const CANVAS_SIZE = 6400;
 
 // Note color presets
 const NOTE_COLORS = [

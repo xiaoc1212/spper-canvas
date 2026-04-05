@@ -1,12 +1,12 @@
 import { ItemCard, DraggableItem } from './ItemCard';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ProjectGroup, SecretItem as Card, ItemType } from '../types';
-import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, Palette, GripVertical, Link2, ExternalLink } from 'lucide-react';
+import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, Palette, GripVertical, Link2, ExternalLink, Crosshair } from 'lucide-react';
 import { motion, useMotionValue, useTransform, AnimatePresence } from 'motion/react';
 import TextareaAutosize from 'react-textarea-autosize';
 
 // ---- Canvas constants ----
-const CANVAS_SIZE = 15000;
+const CANVAS_SIZE = 6400;
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 3.0;
 
@@ -266,6 +266,14 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     });
   };
 
+  const scrollToCenter = useCallback(() => {
+    const container = outerScrollRef.current;
+    if (!container) return;
+    const scale = canvasScaleRef.current;
+    container.scrollLeft = (CANVAS_SIZE * scale - container.clientWidth) / 2;
+    container.scrollTop = (CANVAS_SIZE * scale - container.clientHeight) / 2;
+  }, []);
+
 
   const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, endX: number, endY: number} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -290,14 +298,16 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
   const groupRef = useRef(group);
   useEffect(() => { groupRef.current = group; }, [group]);
 
-  // Initial center position
+  // Initial center position — reset to 100% zoom and scroll to center
   useEffect(() => {
     if (viewMode === 'canvas') {
+      setCanvasScale(1);
+      canvasScaleRef.current = 1;
       const timer = setTimeout(() => {
         if (outerScrollRef.current) {
           const container = outerScrollRef.current;
-          container.scrollLeft = (CANVAS_SIZE * canvasScaleRef.current - container.clientWidth) / 2;
-          container.scrollTop = (CANVAS_SIZE * canvasScaleRef.current - container.clientHeight) / 2;
+          container.scrollLeft = (CANVAS_SIZE * 1 - container.clientWidth) / 2;
+          container.scrollTop = (CANVAS_SIZE * 1 - container.clientHeight) / 2;
         }
       }, 50);
       return () => clearTimeout(timer);
@@ -779,6 +789,12 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#27272a] text-gray-400 hover:text-gray-100 transition-colors text-lg"
                    title="放大"
                 >+</button>
+                <div className="w-px h-5 bg-white/10 mx-0.5" />
+                <button 
+                   onClick={() => { handleZoomCenter(1); requestAnimationFrame(() => scrollToCenter()); }}
+                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#27272a] text-gray-400 hover:text-gray-100 transition-colors"
+                   title="回到中心"
+                ><Crosshair size={16} /></button>
               </div>
             </>
         )}
