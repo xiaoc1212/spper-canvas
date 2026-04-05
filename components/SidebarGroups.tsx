@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Project, ProjectGroup } from '../types';
+import { Project, Board } from '../types';
 import { Plus, Trash2, Folder, Layers } from 'lucide-react';
 
 interface SidebarGroupsProps {
   activeProject: Project | null;
-  activeGroupId: string | null;
+  projectBoards: Board[];
+  activeBoardId: string | null;
   onSelectGroup: (id: string) => void;
   onAddGroup: (name: string) => void;
-  onDeleteGroup: (projectId: string, groupId: string) => void;
+  onDeleteGroup: (groupId: string) => void;
 }
 
 export const SidebarGroups: React.FC<SidebarGroupsProps> = ({
   activeProject,
-  activeGroupId,
+  projectBoards,
+  activeBoardId,
   onSelectGroup,
   onAddGroup,
   onDeleteGroup
@@ -69,31 +71,31 @@ export const SidebarGroups: React.FC<SidebarGroupsProps> = ({
           </form>
         )}
 
-        {activeProject.groups.length === 0 && !isAdding && (
+        {projectBoards.length === 0 && !isAdding && (
             <div className="text-center p-4 text-gray-500 text-xs italic">
-                暂无分组。请添加一个，例如“API密钥”或“数据库”。
+                暂无分组。请添加一个，例如“API密钥”或“画板”。
             </div>
         )}
 
-        {activeProject.groups.map((group) => (
+        {projectBoards.map((board) => (
           <div
-            key={group.id}
+            key={board.id}
             className={`group flex items-center justify-between px-3 py-2 rounded-md cursor-pointer transition-all ${
-              activeGroupId === group.id
+              activeBoardId === board.id
                 ? 'bg-primary/10 text-primary border border-primary/20'
                 : 'text-gray-400 hover:bg-surface hover:text-gray-200'
             }`}
-            onClick={() => onSelectGroup(group.id)}
+            onClick={() => onSelectGroup(board.id)}
           >
              <div className="flex items-center gap-3 overflow-hidden">
-              <Folder size={16} className={activeGroupId === group.id ? 'fill-primary/20' : ''} />
-              <span className="text-sm font-medium truncate">{group.name}</span>
+              <Folder size={16} className={activeBoardId === board.id ? 'fill-primary/20' : ''} />
+              <span className="text-sm font-medium truncate">{board.name}</span>
             </div>
 
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if(confirm(`确定要删除分组 "${group.name}" 吗?`)) onDeleteGroup(activeProject.id, group.id);
+                if(confirm(`确定要删除配置板 "${board.name}" 吗?`)) onDeleteGroup(board.id);
               }}
               className="opacity-0 group-hover:opacity-100 p-1 text-gray-500 hover:text-red-400 transition-opacity"
               title="删除"

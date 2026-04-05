@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ProjectGroup, SecretItem, ItemType } from '../types';
+import { ProjectGroup, Card, ItemType } from '../types';
 import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, Palette, GripVertical, Link2, ExternalLink } from 'lucide-react';
 import { motion, useMotionValue, useTransform, AnimatePresence } from 'motion/react';
 import TextareaAutosize from 'react-textarea-autosize';
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 // Note color presets
 const NOTE_COLORS = [
@@ -31,17 +30,44 @@ const TYPE_ACCENT: Record<string, string> = {
 };
 
 // ---- Canvas constants ----
-const CANVAS_SIZE = 4000;
-const MIN_SCALE = 0.25;
-const MAX_SCALE = 2.5;
+const CANVAS_SIZE = 15000;
+const MIN_SCALE = 0.3;
+const MAX_SCALE = 3.0;
 
-function clampTransform(posX: number, posY: number, scale: number, viewW: number, viewH: number) {
+/**
+ * Milanote-style pan clamping.
+ *
+ * Rules:
+ *  - When the scaled canvas is LARGER than the viewport on an axis,
+ *    don't let the user drag past the edge (no blank space visible).
+ *  - When the scaled canvas is SMALLER than the viewport on an axis,
+ *    lock it to the center (no free panning on that axis).
+ */
+function clampPan(px: number, py: number, scale: number, vw: number, vh: number) {
   const cw = CANVAS_SIZE * scale;
   const ch = CANVAS_SIZE * scale;
-  const x = cw >= viewW ? Math.min(0, Math.max(viewW - cw, posX)) : (viewW - cw) / 2;
-  const y = ch >= viewH ? Math.min(0, Math.max(viewH - ch, posY)) : (viewH - ch) / 2;
+
+  let x: number, y: number;
+
+  if (cw <= vw) {
+    // Canvas fits inside viewport → center it
+    x = (vw - cw) / 2;
+  } else {
+    // Canvas is bigger → allow panning but never reveal blank space
+    // position 0 = left edge aligned, position (vw - cw) = right edge aligned
+    x = Math.min(0, Math.max(vw - cw, px));
+  }
+
+  if (ch <= vh) {
+    y = (vh - ch) / 2;
+  } else {
+    y = Math.min(0, Math.max(vh - ch, py));
+  }
+
   return { x, y };
 }
+
+
 
 const TOOL_ITEMS: { type: ItemType; icon: any; label: string; color: string }[] = [
   { type: 'note',     icon: StickyNote, label: '笔记',   color: '#eab308' },
@@ -55,8 +81,8 @@ const TOOL_ITEMS: { type: ItemType; icon: any; label: string; color: string }[] 
 
 interface ContentAreaProps {
   group: ProjectGroup | null;
-  onAddItem: (item: SecretItem) => void;
-  onUpdateItem: (itemId: string, updates: Partial<SecretItem>) => void;
+  onAddItem: (item: Card) => void;
+  onUpdateItem: (itemId: string, updates: Partial<Card>) => void;
   onDeleteItem: (itemId: string) => void;
 }
 
@@ -218,10 +244,10 @@ const ImportModal: React.FC<{
 };
 
 const ItemCard: React.FC<{
-  item: SecretItem;
+  item: Card;
   onCopy: (val: string) => void;
   onDelete: () => void;
-  onUpdate: (updates: Partial<SecretItem>) => void;
+  onUpdate: (updates: Partial<Card>) => void;
   isGridView: boolean;
   isCanvasView?: boolean;
   onAddChild?: () => void;
@@ -282,11 +308,11 @@ const ItemCard: React.FC<{
             <motion.div 
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                className="relative group/mm w-48"
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="relative group/mm min-w-[200px]"
             >
-                <div className="bg-gradient-to-br from-[#1e293b] to-[#1a2332] border border-teal-500/30 hover:border-teal-400/60 rounded-xl shadow-lg shadow-teal-900/20 transition-all text-gray-300">
-                    <div className="px-3 py-2.5 text-sm font-semibold cursor-grab active:cursor-grabbing w-full min-h-[40px] flex items-center justify-center text-center">
+                <div className="bg-gradient-to-br from-[#1e293b]/90 to-[#0f172a]/90 backdrop-blur-xl border border-white/10 hover:border-white/20 rounded-2xl shadow-xl shadow-black/20 transition-all text-gray-200">
+                    <div className="px-4 py-3 text-[14px] cursor-grab active:cursor-grabbing w-full min-h-[44px] flex items-center justify-center text-center">
                         {isEditingContent ? (
                             <TextareaAutosize
                                 autoFocus
@@ -294,12 +320,12 @@ const ItemCard: React.FC<{
                                 onChange={e => setInlineValue(e.target.value)}
                                 onBlur={handleInlineSave}
                                 onKeyDown={handleInlineKeyDown}
-                                className="w-full bg-transparent border-none text-center focus:outline-none resize-none font-semibold text-white"
+                                className="w-full bg-transparent border-none text-center focus:outline-none resize-none font-medium text-white"
                                 onPointerDownCapture={e => e.stopPropagation()}
                             />
                         ) : (
-                            <div onClick={() => setIsEditingContent(true)} className="w-full break-words">
-                                {item.value || <span className="text-gray-500 italic font-normal">中心主题</span>}
+                            <div onClick={() => setIsEditingContent(true)} className="w-full break-words font-medium">
+                                {item.value || <span className="text-gray-500/70 italic font-normal">中心主题</span>}
                             </div>
                         )}
                     </div>
@@ -308,23 +334,23 @@ const ItemCard: React.FC<{
                 {onAddChild && !isEditingContent && (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onAddChild(); }}
-                        className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 bg-teal-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-125 shadow-lg transition-all z-50 ring-2 ring-background cursor-pointer"
+                        className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-6 h-6 bg-teal-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-110 hover:bg-teal-400 shadow-lg transition-all z-50 ring-2 ring-[#0f172a] cursor-pointer"
                         title="添加子节点"
-                    ><Plus size={12} /></button>
+                    ><Plus size={14} /></button>
                 )}
                 {onAddSibling && !isEditingContent && (
                     <button 
                         onClick={(e) => { e.stopPropagation(); onAddSibling(); }}
-                        className="absolute left-1/2 -bottom-3 -translate-x-1/2 w-5 h-5 bg-gray-600 hover:bg-gray-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-125 shadow-lg transition-all z-50 ring-2 ring-background cursor-pointer"
+                        className="absolute left-1/2 -bottom-3.5 -translate-x-1/2 w-6 h-6 bg-blue-500 hover:bg-blue-400 text-white rounded-full flex items-center justify-center opacity-0 group-hover/mm:opacity-100 hover:scale-110 shadow-lg transition-all z-50 ring-2 ring-[#0f172a] cursor-pointer"
                         title="添加同级节点"
-                    ><Plus size={12} /></button>
+                    ><Plus size={14} /></button>
                 )}
-                <div className="absolute top-[-8px] right-[-8px] opacity-0 group-hover/mm:opacity-100 transition-opacity">
+                <div className="absolute top-[-10px] right-[-10px] opacity-0 group-hover/mm:opacity-100 transition-opacity z-50">
                     <button 
                         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                        className="p-1 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-sm cursor-pointer"
+                        className="p-1 px-1 text-white bg-red-500 hover:bg-red-400 rounded-full shadow-md cursor-pointer transition-colors"
                         title="删除"
-                    ><X size={10} /></button>
+                    ><X size={12} /></button>
                 </div>
             </motion.div>
         );
@@ -374,71 +400,77 @@ const ItemCard: React.FC<{
         );
     }
 
-    // ========== IMAGE CARD (image fills card directly) ==========
+    // ========== IMAGE CARD ==========
     if (item.type === 'image') {
         return (
             <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                className={`group ${isCanvasView ? 'w-64' : isGridView ? 'h-full' : 'mb-3'} rounded-lg overflow-hidden transition-all shadow-md`}
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} rounded-2xl overflow-hidden transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 bg-[#1e293b]/50 backdrop-blur-xl border border-white/10 hover:border-white/20 relative`}
             >
-                <div className="relative bg-transparent flex items-center justify-center cursor-grab active:cursor-grabbing">
+                <div className="relative bg-transparent flex items-center justify-center cursor-grab active:cursor-grabbing min-h-[120px]">
                     {item.value ? (
-                        <img src={item.value} alt={item.label} className="w-full h-auto object-cover block" referrerPolicy="no-referrer" />
+                        <div className="relative w-full h-auto">
+                            <img src={item.value} alt={item.label} className="w-full h-auto object-cover block" referrerPolicy="no-referrer" />
+                            {item.label && <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent pt-10 pb-3 px-4 text-[13px] font-medium text-white truncate">{item.label}</div>}
+                        </div>
                     ) : (
-                        <div className="py-10 flex flex-col w-full items-center gap-2 text-gray-500 bg-surface">
+                        <div className="py-10 flex flex-col w-full items-center gap-2 text-gray-500/50">
                             <ImageIcon size={28} className="opacity-40" />
-                            <span className="text-xs italic">暂无图片</span>
+                            <span className="text-[12px] italic select-none">暂无图片</span>
                         </div>
                     )}
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setIsEditing(true)} className="p-1.5 text-white bg-black/50 hover:bg-black/80 rounded" title="编辑"><Type size={13} /></button>
-                        <button onClick={onDelete} className="p-1.5 text-red-400 bg-black/50 hover:bg-black/80 rounded" title="删除"><Trash2 size={13} /></button>
+                    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button onClick={() => setIsEditing(true)} className="p-1.5 text-white/80 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-md transition-colors" title="编辑"><Type size={13} /></button>
+                        <button onClick={onDelete} className="p-1.5 text-red-400 bg-black/40 hover:bg-black/60 hover:text-red-300 backdrop-blur-md rounded-md transition-colors" title="删除"><Trash2 size={13} /></button>
                     </div>
                 </div>
             </motion.div>
         );
     }
-
-    // ========== NOTE CARD (sticky note with color) ==========
+    // ========== NOTE CARD ==========
     if (item.type === 'note') {
+        const bgColors = ['#fde68a', '#fbcfe8', '#bfdbfe', '#bbf7d0', '#e5e7eb', '#18181b', '#451a03'];
+        const textColors = ['#92400e', '#9d174d', '#1e3a8a', '#166534', '#374151', '#d1d5db', '#fcd34d'];
+        const cIdx = Math.min(noteColorIdx, 6) || 0;
+        const currentBg = bgColors[cIdx];
+        const currentText = textColors[cIdx];
+
         return (
             <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                className={`group ${isCanvasView ? 'w-64' : isGridView ? 'h-full' : 'mb-3'} ${noteColor.bg} ${noteColor.border} border rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-xl`}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.15 }}
+                className={`group ${isCanvasView ? 'w-[260px]' : isGridView ? 'h-full' : 'mb-3'} rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all relative`}
+                style={{ backgroundColor: currentBg, border: cIdx === 5 ? '1px solid rgba(255,255,255,0.1)' : 'none' }}
             >
-                <div className="h-1 w-full" style={{ background: NOTE_COLOR_DOTS[noteColorIdx] || '#eab308' }} />
-                <div className="flex items-center justify-between px-3 pt-2 pb-0.5 cursor-grab active:cursor-grabbing">
-                    <div className="flex items-center gap-1.5 overflow-hidden">
-                        <StickyNote size={13} className="text-yellow-500/70 flex-shrink-0" />
-                        {item.label && <span className="text-xs font-medium text-gray-400 truncate">{item.label}</span>}
+                <div className="flex items-center justify-between px-3 pt-2 pb-1 cursor-grab active:cursor-grabbing select-none" style={{ color: currentText }}>
+                    <div className="flex items-center gap-1.5 overflow-hidden opacity-70">
+                        <StickyNote size={13} className="flex-shrink-0" />
+                        {item.label && <span className="text-[11px] font-semibold truncate uppercase tracking-wider select-none">{item.label}</span>}
                     </div>
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setShowColorPicker(!showColorPicker)} className="p-1 text-gray-500 hover:text-yellow-400 rounded hover:bg-white/10" title="颜色">
-                            <Palette size={13} />
-                        </button>
-                        <button onClick={() => setIsEditing(true)} className="p-1 text-gray-500 hover:text-white rounded hover:bg-white/10" title="编辑"><Type size={13} /></button>
-                        <button onClick={onDelete} className="p-1 text-gray-500 hover:text-red-400 rounded hover:bg-red-400/10" title="删除"><Trash2 size={13} /></button>
+                        <button onClick={() => setShowColorPicker(!showColorPicker)} className="p-1 px-1.5 hover:bg-black/10 rounded-sm transition-colors" title="颜色"><Palette size={13} /></button>
+                        <button onClick={() => setIsEditing(true)} className="p-1 px-1.5 hover:bg-black/10 rounded-sm transition-colors" title="编辑"><Type size={13} /></button>
+                        <button onClick={onDelete} className="p-1 px-1.5 hover:bg-black/10 hover:text-red-700 rounded-sm transition-colors" title="删除"><Trash2 size={13} /></button>
                     </div>
                 </div>
 
                 {showColorPicker && (
-                    <div className="flex gap-1.5 px-3 py-1.5" onPointerDownCapture={e => e.stopPropagation()}>
-                        {NOTE_COLOR_DOTS.map((c, i) => (
+                    <div className="flex flex-wrap justify-between gap-1.5 px-3 py-2 bg-black/5" onPointerDownCapture={e => e.stopPropagation()}>
+                        {bgColors.map((c, i) => (
                             <button
                                 key={i}
                                 onClick={() => { setNoteColorIdx(i); setShowColorPicker(false); onUpdate({ noteColor: i }); }}
-                                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-125 ${noteColorIdx === i ? 'border-white scale-110' : 'border-transparent'}`}
+                                className={`w-5 h-5 rounded-full border border-black/10 transition-transform hover:scale-110 ${noteColorIdx === i ? 'ring-2 ring-black/30' : ''}`}
                                 style={{ background: c }}
                             />
                         ))}
                     </div>
                 )}
 
-                <div className="px-3 pb-3 pt-1" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
+                <div className="px-3 pb-4 pt-1" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
                     {isEditingContent ? (
                         <textarea
                             autoFocus
@@ -446,41 +478,44 @@ const ItemCard: React.FC<{
                             onChange={e => setInlineValue(e.target.value)}
                             onBlur={handleInlineSave}
                             onKeyDown={handleInlineKeyDown}
-                            className={`w-full bg-transparent border-none focus:outline-none resize-none min-h-[80px] text-sm ${noteColor.text}`}
+                            className="w-full bg-transparent border-none focus:outline-none resize-none min-h-[120px] text-[14px] leading-relaxed"
+                            style={{ color: currentText }}
                             onPointerDownCapture={e => e.stopPropagation()}
                         />
                     ) : (
                         <div 
                             onClick={() => setIsEditingContent(true)}
-                            className={`text-sm whitespace-pre-wrap cursor-text min-h-[40px] ${noteColor.text} ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
+                            className={`text-[14px] leading-relaxed whitespace-pre-wrap cursor-text min-h-[120px] ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
+                            style={{ color: currentText }}
                         >
-                            {item.value || <span className="opacity-50 italic">点击输入内容...</span>}
+                            {item.value || <span className="opacity-40 italic">点击输入内容...</span>}
                         </div>
                     )}
                 </div>
             </motion.div>
         );
     }
-
-    // ========== CODE CARD (notion like) ==========
+    // ========== CODE CARD ==========
     if (item.type === 'code') {
         const lang = item.label || 'javascript';
         return (
             <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                className={`group ${isCanvasView ? 'w-auto min-w-[16rem]' : isGridView ? 'h-full' : 'mb-3'} bg-[#1e1e1e] border border-[#2d2d2d] rounded-md overflow-hidden shadow-sm transition-all relative px-4 py-3 cursor-grab active:cursor-grabbing`}
+                transition={{ duration: 0.15 }}
+                className={`group ${isCanvasView ? 'w-auto min-w-[300px] max-w-[500px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all relative cursor-grab active:cursor-grabbing`}
             >
-                <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-xs text-gray-500 font-mono select-none">{lang}</span>
-                    <button onClick={handleCopy} className={`p-1 rounded transition-colors ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white hover:bg-white/10'}`} title="复制">
-                        {copied ? <Check size={13} /> : <Copy size={13} />}
-                    </button>
-                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded hover:bg-white/10" title="编辑"><Type size={13} /></button>
-                    <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded hover:bg-red-400/10" title="删除"><Trash2 size={13} /></button>
+                <div className="flex items-center justify-between px-3 py-1.5 bg-[#27272a] border-b border-white/5 select-none">
+                    <span className="text-[11px] font-mono font-medium text-gray-400 select-none uppercase tracking-widest">{lang}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={handleCopy} className={`p-1 rounded-sm transition-colors ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white hover:bg-[#3f3f46]'}`} title="复制">
+                            {copied ? <Check size={13} /> : <Copy size={13} />}
+                        </button>
+                        <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title="编辑"><Type size={13} /></button>
+                        <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded-sm hover:bg-[#3f3f46]" title="删除"><Trash2 size={13} /></button>
+                    </div>
                 </div>
-                <div className="mt-1" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
+                <div className="p-3 bg-[#18181b]" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
                     {isEditingContent ? (
                         <TextareaAutosize
                             autoFocus
@@ -488,42 +523,43 @@ const ItemCard: React.FC<{
                             onChange={e => setInlineValue(e.target.value)}
                             onBlur={handleInlineSave}
                             onKeyDown={handleInlineKeyDown}
-                            className="w-full bg-transparent text-sm text-gray-300 font-mono focus:outline-none resize-none pl-3 border-l-2 border-primary/50"
+                            className="w-full bg-transparent text-[13px] text-gray-300 font-mono focus:outline-none resize-none selection:bg-blue-500/30"
                             onPointerDownCapture={e => e.stopPropagation()}
                         />
                     ) : (
                         <div onClick={() => setIsEditingContent(true)}
-                            className={`text-sm text-gray-300 font-mono whitespace-pre-wrap cursor-text break-all pl-3 border-l-2 border-gray-600 hover:border-gray-500 transition-colors ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
+                            className={`text-[13px] text-gray-300 font-mono whitespace-pre cursor-text min-h-[40px] selection:bg-blue-500/30 ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
                         >
-                            {item.value || <span className="text-gray-600 italic">点击输入代码...</span>}
+                            {item.value || <span className="text-gray-600 italic select-none">点击输入代码...</span>}
                         </div>
                     )}
                 </div>
             </motion.div>
         );
     }
-
-    // ========== PASSWORD CARD (username/password stack) ==========
+    // ========== PASSWORD CARD ==========
     if (item.type === 'password') {
         return (
             <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                className={`group ${isCanvasView ? 'w-64' : isGridView ? 'h-full' : 'mb-3'} bg-surface border border-border hover:border-red-900/40 rounded-lg overflow-hidden shadow-sm transition-all p-4 cursor-grab active:cursor-grabbing relative`}
+                transition={{ duration: 0.15 }}
+                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all p-4 flex flex-col cursor-grab active:cursor-grabbing relative`}
             >
-                <div className="absolute top-2 right-2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded hover:bg-white/10" title="编辑"><Type size={13} /></button>
-                    <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded hover:bg-red-400/10" title="删除"><Trash2 size={13} /></button>
+                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title="编辑"><Type size={13} /></button>
+                    <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded-sm hover:bg-[#3f3f46]" title="删除"><Trash2 size={13} /></button>
                 </div>
-                
+                <div className="flex items-center gap-2 mb-3 select-none">
+                    <Key size={14} className="text-gray-500" />
+                    <span className="text-[13px] font-semibold text-gray-300 tracking-wide">账号密码</span>
+                </div>
                 <div className="mb-3">
-                    <div className="text-xs text-gray-500 mb-0.5 select-none">用户名</div>
-                    <div className="text-sm font-semibold text-gray-200 break-all pr-12">{item.label || '暂无'}</div>
+                    <div className="text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-widest select-none">用户名</div>
+                    <div className="text-[13px] font-medium text-gray-200 break-all bg-[#27272a] px-3 py-1.5 rounded border border-white/5 select-text">{item.label || '暂无'}</div>
                 </div>
-                
                 <div className="relative" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
-                    <div className="text-xs text-gray-500 mb-0.5 select-none">密码</div>
+                    <div className="text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-widest select-none">密码</div>
                     {isEditingContent ? (
                         <TextareaAutosize
                             autoFocus
@@ -531,20 +567,20 @@ const ItemCard: React.FC<{
                             onChange={e => setInlineValue(e.target.value)}
                             onBlur={handleInlineSave}
                             onKeyDown={handleInlineKeyDown}
-                            className="w-full bg-transparent text-sm text-gray-300 font-mono focus:outline-none resize-none px-2 py-1.5 border border-primary/50 rounded"
+                            className="w-full bg-[#27272a] text-[13px] text-gray-300 font-mono focus:outline-none resize-none px-3 py-1.5 border border-white/10 rounded shadow-inner"
                             onPointerDownCapture={e => e.stopPropagation()}
                         />
                     ) : (
-                        <div onClick={() => setIsEditingContent(true)} className="flex items-center justify-between cursor-text bg-background border border-border/50 rounded px-2 py-1.5">
-                            <code className="text-sm font-mono text-gray-300 flex-1 truncate">
-                                {revealed ? item.value : '•'.repeat(Math.min(item.value.length, 24) || 8)}
+                        <div onClick={() => setIsEditingContent(true)} className="flex items-center justify-between cursor-text bg-[#27272a] border border-white/5 rounded px-3 py-1.5 group/pwd hover:bg-[#3f3f46] transition-colors">
+                            <code className="text-[13px] font-mono text-gray-300 flex-1 truncate select-none">
+                                {revealed ? item.value : '•'.repeat(Math.min(item.value.length, 24) || 12)}
                             </code>
-                            <div className="flex items-center gap-1">
-                                <button onClick={(e) => { e.stopPropagation(); setRevealed(!revealed); }} className="p-1 text-gray-400 hover:text-white rounded" title={revealed ? '隐藏' : '显示'}>
-                                    {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                            <div className="flex items-center gap-1 opacity-50 group-hover/pwd:opacity-100 transition-opacity">
+                                <button onClick={(e) => { e.stopPropagation(); setRevealed(!revealed); }} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title={revealed ? '隐藏' : '显示'}>
+                                    {revealed ? <EyeOff size={13} /> : <Eye size={13} />}
                                 </button>
-                                <button onClick={(e) => { e.stopPropagation(); handleCopy(); }} className={`p-1 rounded ${copied ? 'text-green-400' : 'text-gray-400 hover:text-primary'}`} title="复制">
-                                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                                <button onClick={(e) => { e.stopPropagation(); handleCopy(); }} className={`p-1 rounded-sm hover:bg-[#3f3f46] ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white'}`} title="复制">
+                                    {copied ? <Check size={13} /> : <Copy size={13} />}
                                 </button>
                             </div>
                         </div>
@@ -553,8 +589,7 @@ const ItemCard: React.FC<{
             </motion.div>
         );
     }
-
-    // ========== LINK CARD (Thumbnail + Detail) ==========
+    // ========== LINK CARD ==========
     if (item.type === 'link') {
         let urlHost = '未知链接';
         try {
@@ -567,33 +602,32 @@ const ItemCard: React.FC<{
 
         return (
             <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
+                initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-                className={`group ${isCanvasView ? 'w-64' : isGridView ? 'h-full' : 'mb-3'} bg-surface border border-border rounded-lg overflow-hidden shadow-md transition-all cursor-grab active:cursor-grabbing`}
+                transition={{ duration: 0.15 }}
+                className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all cursor-grab active:cursor-grabbing flex flex-col relative`}
             >
-                <div className="relative bg-[#1e293b] flex items-center justify-center min-h-[140px] border-b border-border">
-                    {/* Extract potential image from value if it's an image search, otherwise generate a generic one or show domain icon */}
+                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    <button onClick={() => setIsEditing(true)} className="p-1.5 text-gray-300 bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 rounded-sm transition-colors" title="编辑"><Type size={13} /></button>
+                    <button onClick={onDelete} className="p-1.5 text-red-400 bg-[#27272a] hover:bg-[#3f3f46] border border-white/10 rounded-sm transition-colors" title="删除"><Trash2 size={13} /></button>
+                </div>
+
+                <div className="relative bg-[#27272a] flex items-center justify-center min-h-[120px] border-b border-white/5">
                     {item.value && item.value.startsWith('http') ? (
-                        <div className="w-full h-full absolute inset-0 flex items-center justify-center bg-background/50">
-                            <ExternalLink size={32} className="text-gray-600" />
+                        <div className="w-full h-full absolute inset-0 flex items-center justify-center group-hover:bg-[#3f3f46]/50 transition-colors">
+                            <ExternalLink size={28} className="text-gray-500" />
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center gap-2 text-gray-500">
+                        <div className="flex flex-col items-center gap-2 text-gray-600">
                             <Link2 size={24} className="opacity-40" />
                             <span className="text-xs">无链接</span>
                         </div>
                     )}
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <button onClick={() => setIsEditing(true)} className="p-1.5 text-white bg-black/50 hover:bg-black/80 rounded" title="编辑"><Type size={13} /></button>
-                        <button onClick={onDelete} className="p-1.5 text-red-400 bg-black/50 hover:bg-black/80 rounded" title="删除"><Trash2 size={13} /></button>
-                    </div>
                 </div>
-                <div className="p-3 bg-surface">
-                    <div className="text-sm font-semibold text-gray-200 truncate mb-1" title={item.label}>{item.label || urlHost}</div>
+                <div className="p-3 bg-transparent flex flex-col justify-center min-h-[60px]">
+                    <div className="text-[13px] font-semibold text-gray-200 truncate mb-1 select-none" title={item.label}>{item.label || urlHost}</div>
                     <div className="flex items-center gap-1.5 opacity-70 hover:opacity-100 transition-opacity">
-                        <Link2 size={12} className="text-primary flex-shrink-0" />
-                        <a href={item.value} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} className="text-xs text-primary truncate hover:underline" title={item.value}>
+                        <a href={item.value} target="_blank" rel="noreferrer" onPointerDown={e => e.stopPropagation()} className="text-[11px] font-mono text-blue-400 truncate hover:underline" title={item.value}>
                             {item.value || '点击设置链接'}
                         </a>
                     </div>
@@ -602,34 +636,32 @@ const ItemCard: React.FC<{
         );
     }
 
-    // ========== TEXT CARD (tab page like) ==========
+    // ========== TEXT CARD ==========
     return (
         <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-            className={`group ${isCanvasView ? 'w-64' : isGridView ? 'h-full' : 'mb-3'} bg-surface border border-border hover:border-blue-500/30 rounded-lg overflow-hidden shadow-sm transition-all flex flex-col`}
+            transition={{ duration: 0.15 }}
+            className={`group ${isCanvasView ? 'w-[280px]' : isGridView ? 'h-full' : 'mb-3'} bg-[#18181b] border border-white/10 hover:border-white/30 rounded-md overflow-hidden shadow-[0_4px_12px_rgba(0,0,0,0.4)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition-all flex flex-col`}
         >
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 bg-background/50 border-b border-border cursor-grab active:cursor-grabbing">
+            <div className="flex items-center justify-between px-3 py-2 bg-[#27272a] border-b border-white/5 cursor-grab active:cursor-grabbing select-none">
                 <div className="flex items-center gap-2 overflow-hidden">
-                    <Type size={13} className="text-blue-400 flex-shrink-0" />
+                    <Type size={13} className="text-gray-400" />
                     {item.label ? (
-                        <span className="text-sm font-semibold text-gray-200 truncate">{item.label}</span>
+                        <span className="text-[12px] font-semibold text-gray-200 truncate select-none uppercase tracking-wider">{item.label}</span>
                     ) : (
-                        <span className="text-sm italic text-gray-500">无标题</span>
+                        <span className="text-[12px] italic text-gray-500 select-none">文本</span>
                     )}
                 </div>
-                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={handleCopy} className={`p-1 rounded transition-all ${copied ? 'text-green-400' : 'text-gray-500 hover:text-white hover:bg-white/10'}`} title="复制">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={handleCopy} className={`p-1 rounded-sm transition-colors ${copied ? 'text-green-400' : 'text-gray-400 hover:text-white hover:bg-[#3f3f46]'}`} title="复制">
                         {copied ? <Check size={13} /> : <Copy size={13} />}
                     </button>
-                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-500 hover:text-white rounded hover:bg-white/10" title="编辑"><Type size={13} /></button>
-                    <button onClick={onDelete} className="p-1 text-gray-500 hover:text-red-400 rounded hover:bg-red-400/10" title="删除"><Trash2 size={13} /></button>
+                    <button onClick={() => setIsEditing(true)} className="p-1 text-gray-400 hover:text-white rounded-sm hover:bg-[#3f3f46]" title="编辑"><Type size={13} /></button>
+                    <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-400 rounded-sm hover:bg-[#3f3f46]" title="删除"><Trash2 size={13} /></button>
                 </div>
             </div>
-            {/* Content box */}
-            <div className="relative flex-1 p-3 bg-background min-h-[100px]" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
+            <div className="relative flex-1 p-3 bg-transparent min-h-[100px]" onPointerDownCapture={e => { if (isEditingContent) e.stopPropagation(); }}>
                 {isEditingContent ? (
                     <TextareaAutosize
                         autoFocus
@@ -637,12 +669,12 @@ const ItemCard: React.FC<{
                         onChange={e => setInlineValue(e.target.value)}
                         onBlur={handleInlineSave}
                         onKeyDown={handleInlineKeyDown}
-                        className="w-full bg-transparent text-sm text-gray-300 focus:outline-none resize-none"
+                        className="w-full bg-transparent text-[13px] leading-relaxed text-gray-300 focus:outline-none resize-none"
                         onPointerDownCapture={e => e.stopPropagation()}
                     />
                 ) : (
                     <div onClick={() => setIsEditingContent(true)}
-                        className={`text-sm text-gray-300 break-all cursor-text ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
+                        className={`text-[13px] leading-relaxed text-gray-300 break-words cursor-text ${isGridView ? 'overflow-y-auto max-h-48' : ''}`}
                     >
                         {item.value || <span className="text-gray-600 italic">点击输入文本...</span>}
                     </div>
@@ -652,38 +684,113 @@ const ItemCard: React.FC<{
     );
 };
 
-const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild, onAddSibling, group, selectedIds, onUpdateMultiple, handleCopy, onDeleteItem, allItems, onSetGuides }: any) => {
+const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild, onAddSibling, group, selectedIds, onUpdateMultiple, handleCopy, onDeleteItem, allItems, onSetGuides, canvasScale = 1, onDragStart }: any) => {
     const x = useMotionValue(item.x || 0);
     const y = useMotionValue(item.y || 0);
-    const prevGuidesRef = useRef<string>('');
-    const CANVAS_SIZE = 4000;
-    const CARD_WIDTH = item.type === 'mindmap' ? 192 : 256; // w-48 is 12rem = 192px
+    const isDraggingRef = useRef(false);
+    const dragStartRef = useRef<{ mx: number; my: number; ix: number; iy: number } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const CARD_WIDTH = item.type === 'mindmap' ? 192 : 256;
     const SNAP_THRESHOLD = 5;
 
     useEffect(() => {
-        x.set(item.x || 0);
-        y.set(item.y || 0);
+        if (!isDraggingRef.current) {
+            x.set(item.x || 0);
+            y.set(item.y || 0);
+        }
     }, [item.x, item.y, x, y]);
+
+    const handlePointerDown = useCallback((e: React.PointerEvent) => {
+        // Don't start drag from editable content
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+
+        if (!isSelected) {
+            onSelect(item.id, e.shiftKey);
+        }
+        e.stopPropagation();
+        e.nativeEvent.stopPropagation();
+
+        // Start drag tracking
+        isDraggingRef.current = false; // not yet - wait for threshold
+        dragStartRef.current = { mx: e.clientX, my: e.clientY, ix: x.get(), iy: y.get() };
+        if (onDragStart) onDragStart();
+        document.body.style.userSelect = 'none';
+
+        const onMove = (ev: PointerEvent) => {
+            if (!dragStartRef.current) return;
+            const { mx, my, ix, iy } = dragStartRef.current;
+
+            // Divide by canvasScale to compensate for CSS scale transform
+            const dx = (ev.clientX - mx) / canvasScale;
+            const dy = (ev.clientY - my) / canvasScale;
+
+            // Drag threshold (3px screen space)
+            if (!isDraggingRef.current) {
+                if (Math.abs(ev.clientX - mx) > 3 || Math.abs(ev.clientY - my) > 3) {
+                    isDraggingRef.current = true;
+                    setIsDragging(true);
+                } else {
+                    return;
+                }
+            }
+
+            let newX = ix + dx;
+            let newY = iy + dy;
+
+            // Boundary constraints
+            newX = Math.max(0, Math.min(CANVAS_SIZE - CARD_WIDTH, newX));
+            newY = Math.max(0, Math.min(CANVAS_SIZE - 200, newY));
+
+            x.set(newX);
+            y.set(newY);
+
+            // Sync position to React state in realtime (needed for connection lines & multi-select)
+            if (isDraggingRef.current) {
+                if (isSelected && selectedIds && selectedIds.size > 1 && onUpdateMultiple) {
+                    const totalDx = newX - dragStartRef.current.ix;
+                    const totalDy = newY - dragStartRef.current.iy;
+                    onUpdateMultiple(totalDx, totalDy);
+                } else if (onUpdate) {
+                    onUpdate({ x: newX, y: newY });
+                }
+            }
+        };
+
+        const onUp = (ev: PointerEvent) => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+
+            // Sync final position to React state ONLY on release
+            if (isDraggingRef.current && dragStartRef.current) {
+                const finalX = x.get();
+                const finalY = y.get();
+                if (isSelected && selectedIds && selectedIds.size > 1 && onUpdateMultiple) {
+                    const totalDx = finalX - dragStartRef.current.ix;
+                    const totalDy = finalY - dragStartRef.current.iy;
+                    onUpdateMultiple(totalDx, totalDy);
+                } else if (onUpdate) {
+                    onUpdate({ x: finalX, y: finalY });
+                }
+            }
+
+            isDraggingRef.current = false;
+            dragStartRef.current = null;
+            setIsDragging(false);
+            if (onSetGuides) onSetGuides([]);
+            document.body.style.userSelect = '';
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+    }, [item, isSelected, onSelect, x, y, canvasScale, allItems, selectedIds, onUpdate, onUpdateMultiple, onSetGuides, CARD_WIDTH]);
 
     return (
         <motion.div
             style={{ x, y, position: 'absolute', touchAction: 'none' }}
-            drag
-            dragMomentum={false}
-            dragConstraints={{ left: 0, top: 0, right: CANVAS_SIZE - CARD_WIDTH, bottom: CANVAS_SIZE - 200 }}
-            whileDrag={{ 
-                zIndex: 30, 
-                scale: 1.03,
-                rotate: 1,
-                transition: { type: 'spring', stiffness: 300, damping: 20 }
-            }}
-            onPointerDown={(e) => {
-                if (!isSelected) {
-                    onSelect(item.id, e.shiftKey);
-                }
-                e.stopPropagation();
-                e.nativeEvent.stopPropagation();
-            }}
+            animate={isDragging ? { scale: 1.02 } : { scale: 1 }}
+            transition={{ scale: { type: 'spring', stiffness: 400, damping: 25 } }}
+            onPointerDown={handlePointerDown}
             onMouseDown={(e) => {
                 e.stopPropagation();
                 e.nativeEvent.stopPropagation();
@@ -692,53 +799,7 @@ const DraggableItem = ({ item, isSelected, onSelect, onUpdate, onAddChild, onAdd
                 e.stopPropagation();
                 e.nativeEvent.stopPropagation();
             }}
-            onDrag={(e, info) => {
-                const currentX = x.get();
-                const currentY = y.get();
-                
-                let snapX = currentX;
-                let snapY = currentY;
-                let guides: { type: 'h' | 'v', pos: number }[] = [];
-
-                // Alignment snapping
-                if (allItems) {
-                    allItems.forEach(other => {
-                        if (other.id === item.id || selectedIds.has(other.id)) return;
-                        
-                        // Vertical alignment (x position)
-                        if (Math.abs(currentX - (other.x || 0)) < SNAP_THRESHOLD) {
-                            snapX = other.x || 0;
-                            guides.push({ type: 'v', pos: snapX });
-                        } else if (Math.abs(currentX + CARD_WIDTH - ((other.x || 0) + CARD_WIDTH)) < SNAP_THRESHOLD) {
-                            snapX = other.x || 0;
-                            guides.push({ type: 'v', pos: snapX + CARD_WIDTH });
-                        }
-
-                        // Horizontal alignment (y position)
-                        if (Math.abs(currentY - (other.y || 0)) < SNAP_THRESHOLD) {
-                            snapY = other.y || 0;
-                            guides.push({ type: 'h', pos: snapY });
-                        }
-                    });
-                }
-
-                // Boundary constraints
-                snapX = Math.max(0, Math.min(CANVAS_SIZE - CARD_WIDTH, snapX));
-                snapY = Math.max(0, Math.min(CANVAS_SIZE - 200, snapY)); // Approx height
-            }}
-            onDragEnd={(e, info) => {
-                const finalX = x.get();
-                const finalY = y.get();
-                const dx = finalX - (item.x || 0);
-                const dy = finalY - (item.y || 0);
-                
-                if (isSelected) {
-                    onUpdateMultiple(dx, dy);
-                } else {
-                    onUpdate({ x: finalX, y: finalY });
-                }
-            }}
-            className={`z-10 hover:z-20 nodrag ${isSelected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background rounded-xl' : ''}`}
+            className={`${isDragging ? 'z-30' : 'z-10'} hover:z-20 nodrag ${isSelected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background rounded-xl' : ''}`}
         >
             <ItemCard 
                 item={item} 
@@ -767,8 +828,40 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
   const [newItemType, setNewItemType] = useState<ItemType>('text');
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'canvas'>('canvas');
   
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const transformRef = useRef<any>(null);
+  const outerScrollRef = useRef<HTMLDivElement>(null);
+  const innerCanvasRef = useRef<HTMLDivElement>(null);
+  const [canvasScale, setCanvasScale] = useState(1);
+  const canvasScaleRef = useRef(1); // Store latest scale to avoid stale closure in native event listeners
+  
+  useEffect(() => {
+    canvasScaleRef.current = canvasScale;
+  }, [canvasScale]);
+
+  const handleZoomCenter = (newScale: number) => {
+    const container = outerScrollRef.current;
+    if (!container) {
+        setCanvasScale(newScale);
+        return;
+    }
+
+    const { scrollLeft, scrollTop, clientWidth, clientHeight } = container;
+    const oldScale = canvasScaleRef.current;
+    
+    const centerXStart = (scrollLeft + clientWidth / 2) / oldScale;
+    const centerYStart = (scrollTop + clientHeight / 2) / oldScale;
+
+    setCanvasScale(newScale);
+
+    requestAnimationFrame(() => {
+        if (!outerScrollRef.current) return;
+        const targetScrollLeft = centerXStart * newScale - clientWidth / 2;
+        const targetScrollTop = centerYStart * newScale - clientHeight / 2;
+        
+        outerScrollRef.current.scrollLeft = targetScrollLeft;
+        outerScrollRef.current.scrollTop = targetScrollTop;
+    });
+  };
+
 
   const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, endX: number, endY: number} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -779,14 +872,52 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
   const ghostDragTypeRef = useRef<ItemType | null>(null);
 
   // Canvas interaction refs
+  const draggedOriginsRef = useRef<Record<string, {x: number, y: number}>>({});
   const pointerDownOnCanvasRef = useRef(false);
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const isBoxSelectingRef = useRef(false);
+
+  // Pan state
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<{ mx: number; my: number; px: number; py: number } | null>(null);
   const spaceHeldRef = useRef(false);
-  const isSpacePanningRef = useRef(false);
-  const spacePanStartRef = useRef<{ clientX: number; clientY: number; posX: number; posY: number } | null>(null);
-  const isMiddlePanningRef = useRef(false);
-  const middlePanStartRef = useRef<{ clientX: number; clientY: number; posX: number; posY: number } | null>(null);
+
+  // Keep group in a ref for access in native event listeners (avoid stale closures)
+  const groupRef = useRef(group);
+  useEffect(() => { groupRef.current = group; }, [group]);
+
+  // Initial center position
+  useEffect(() => {
+    if (viewMode === 'canvas') {
+      const timer = setTimeout(() => {
+        if (outerScrollRef.current) {
+          const container = outerScrollRef.current;
+          container.scrollLeft = (CANVAS_SIZE * canvasScaleRef.current - container.clientWidth) / 2;
+          container.scrollTop = (CANVAS_SIZE * canvasScaleRef.current - container.clientHeight) / 2;
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [viewMode]);
+
+  // Global delete shortcut for selected items
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || target.isContentEditable) {
+        return; 
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+         if (selectedIds.size > 0 && viewMode === 'canvas') {
+            selectedIds.forEach(id => onDeleteItem(id));
+            setSelectedIds(new Set()); 
+         }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds, viewMode, onDeleteItem]);
+
 
   useEffect(() => {
     setIsAdding(false);
@@ -809,11 +940,10 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                       reader.onload = (ev) => {
                           const base64 = ev.target?.result as string;
                           let x = 100, y = 100;
-                          const ts = transformRef.current?.instance?.transformState;
-                          if (ts && canvasRef.current) {
-                              const rect = canvasRef.current.getBoundingClientRect();
-                              x = (rect.width / 2 - ts.positionX) / ts.scale - 128;
-                              y = (rect.height / 2 - ts.positionY) / ts.scale - 100;
+                          if (outerScrollRef.current) {
+                              const rect = outerScrollRef.current.getBoundingClientRect();
+                              x = (rect.width / 2 + outerScrollRef.current.scrollLeft) / canvasScale - 128;
+                              y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 100;
                           }
                           onAddItem({ id: crypto.randomUUID(), label: '', value: base64, type: 'image', x, y });
                       };
@@ -827,169 +957,197 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
       return () => window.removeEventListener('paste', handlePaste);
   }, [viewMode, onAddItem]);
 
-  // Custom wheel: scroll=pan, Ctrl+scroll=zoom
+
+
+  // Global mouse: pan + ghost drag drop + box select
   useEffect(() => {
     if (viewMode !== 'canvas') return;
-    const el = canvasRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const inst = transformRef.current?.instance;
-      if (!inst) return;
-      const { positionX, positionY, scale } = inst.transformState;
-      const rect = el.getBoundingClientRect();
-      if (e.ctrlKey || e.metaKey) {
-        const factor = e.deltaY > 0 ? 0.92 : 1.08;
-        const ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * factor));
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const nx = mx - (mx - positionX) * (ns / scale);
-        const ny = my - (my - positionY) * (ns / scale);
-        const c = clampTransform(nx, ny, ns, rect.width, rect.height);
-        transformRef.current?.setTransform(c.x, c.y, ns, 0);
-      } else {
-        const dx = e.shiftKey ? e.deltaY : (e.deltaX || 0);
-        const dy = e.shiftKey ? 0 : e.deltaY;
-        const c = clampTransform(positionX - dx, positionY - dy, scale, rect.width, rect.height);
-        transformRef.current?.setTransform(c.x, c.y, scale, 0);
+    const container = outerScrollRef.current;
+    if (!container) return;
+
+    const getTransform = () => {
+      // In our native scroll system, positionX is the negative scrollLeft
+      return { positionX: -container.scrollLeft, positionY: -container.scrollTop, scale: canvasScaleRef.current };
+    };
+
+    const isOnCard = (target: EventTarget | null) => {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      return !!target.closest('.nodrag');
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if ((e.target as Element).closest('.toolbar-container')) return;
+      if (ghostDragTypeRef.current) return;
+      if (e.button !== 0 && e.button !== 1) return;
+      if (isOnCard(e.target)) return;
+
+      // Space + Left Click OR Middle Click = Pan
+      if (e.button === 1 || (e.button === 0 && spaceHeldRef.current)) {
+        e.preventDefault();
+        isPanningRef.current = true;
+        panStartRef.current = { mx: e.clientX, my: e.clientY, px: container.scrollLeft, py: container.scrollTop };
+        container.style.cursor = 'grabbing';
+        return;
+      }
+
+      // Default Left Click = Box Select
+      if (e.button === 0) {
+        if (!e.shiftKey) {
+          setSelectedIds(new Set());
+        }
+        setIsAdding(false);
+        const rect = container.getBoundingClientRect();
+        const { positionX, positionY, scale } = getTransform();
+        const x = (e.clientX - rect.left - positionX) / scale;
+        const y = (e.clientY - rect.top - positionY) / scale;
+        pointerDownPosRef.current = { x, y };
+        pointerDownOnCanvasRef.current = true;
+        
+        // Prevent accidental text selection everywhere while initiating a potential drag
+        window.getSelection()?.removeAllRanges();
+        document.body.style.userSelect = 'none';
       }
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [viewMode]);
 
-  // Space key: hold to enable pan with left drag
-  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (ghostDragTypeRef.current) {
+        setGhostDrag(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+      }
+
+      // Native Panning by modifying scrollLeft
+      if (isPanningRef.current && panStartRef.current) {
+        const dx = e.clientX - panStartRef.current.mx;
+        const dy = e.clientY - panStartRef.current.my;
+        container.scrollLeft = panStartRef.current.px - dx;
+        container.scrollTop = panStartRef.current.py - dy;
+        return;
+      }
+
+      // Box select
+      if (pointerDownOnCanvasRef.current && pointerDownPosRef.current) {
+        const rect = container.getBoundingClientRect();
+        const { positionX, positionY, scale } = getTransform();
+        const x = (e.clientX - rect.left - positionX) / scale;
+        const y = (e.clientY - rect.top - positionY) / scale;
+        const { x: sx, y: sy } = pointerDownPosRef.current;
+        if (!isBoxSelectingRef.current) {
+          if (Math.hypot(x - sx, y - sy) > 5) { 
+              isBoxSelectingRef.current = true; 
+              setSelectionBox({ startX: sx, startY: sy, endX: x, endY: y }); 
+              document.body.style.userSelect = 'none'; 
+          }
+        } else {
+          setSelectionBox(prev => prev ? { ...prev, endX: x, endY: y } : null);
+          const minX = Math.min(sx, x), maxX = Math.max(sx, x), minY = Math.min(sy, y), maxY = Math.max(sy, y);
+          const ns = new Set<string>();
+          groupRef.current?.items.forEach(item => { const ix = item.x || 0, iy = item.y || 0; if (ix < maxX && ix + 256 > minX && iy < maxY && iy + 100 > minY) ns.add(item.id); });
+          setSelectedIds(ns);
+        }
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (ghostDragTypeRef.current) {
+        const rect = container.getBoundingClientRect();
+        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+          const { positionX, positionY, scale } = getTransform();
+          const cx = (e.clientX - rect.left - positionX) / scale;
+          const cy = (e.clientY - rect.top - positionY) / scale;
+          onAddItem({ id: crypto.randomUUID(), label: ghostDragTypeRef.current === 'mindmap' ? '中心主题' : '', value: '', type: ghostDragTypeRef.current!, x: cx - 128, y: cy - 50, isNew: true });
+        }
+        ghostDragTypeRef.current = null;
+        setGhostDrag(null);
+      }
+
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        panStartRef.current = null;
+        container.style.cursor = '';
+      }
+
+      if (pointerDownOnCanvasRef.current) {
+        if (!isBoxSelectingRef.current) setSelectedIds(new Set());
+        pointerDownOnCanvasRef.current = false;
+        pointerDownPosRef.current = null;
+        isBoxSelectingRef.current = false;
+        setSelectionBox(null);
+        document.body.style.userSelect = '';
+      }
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      // ONLY intercept if Ctrl/Cmd is down (Zooming). 
+      // Ordinary wheel scroll natively pans the container!
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.9 : 1.1; // Smooth 10% zoom steps
+        setCanvasScale(currentScale => {
+          const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, currentScale * factor));
+          if (newScale !== currentScale) {
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Calculate point under mouse before zoom
+            const focusX = (mouseX + container.scrollLeft) / currentScale;
+            const focusY = (mouseY + container.scrollTop) / currentScale;
+            
+            // Apply new scroll required to anchor that focus point under mouse
+            Promise.resolve().then(() => {
+                container.scrollLeft = focusX * newScale - mouseX;
+                container.scrollTop = focusY * newScale - mouseY;
+            });
+          }
+          return newScale;
+        });
+      }
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    container.addEventListener('wheel', onWheel, { passive: false });
+    
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         const t = e.target as HTMLElement;
+        // ignore if typing in input
         if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable) return;
-        e.preventDefault();
-        spaceHeldRef.current = true;
-        if (canvasRef.current) canvasRef.current.style.cursor = 'grab';
+        if (!spaceHeldRef.current) {
+           spaceHeldRef.current = true;
+           container.style.cursor = 'grab';
+        }
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         spaceHeldRef.current = false;
-        isSpacePanningRef.current = false;
-        spacePanStartRef.current = null;
-        if (canvasRef.current) canvasRef.current.style.cursor = '';
+        container.style.cursor = '';
       }
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
-  }, []);
 
-  // Global mouse: ghost drag drop + space/middle panning
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (ghostDragTypeRef.current) {
-        setGhostDrag(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
-      }
-      const doSpacePan = isSpacePanningRef.current && spacePanStartRef.current;
-      const doMidPan = isMiddlePanningRef.current && middlePanStartRef.current;
-      if (doSpacePan || doMidPan) {
-        const start = doSpacePan ? spacePanStartRef.current! : middlePanStartRef.current!;
-        const dx = e.clientX - start.clientX;
-        const dy = e.clientY - start.clientY;
-        const inst = transformRef.current?.instance;
-        const scale = inst?.transformState.scale || 1;
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (rect) {
-          const c = clampTransform(start.posX + dx, start.posY + dy, scale, rect.width, rect.height);
-          transformRef.current?.setTransform(c.x, c.y, scale, 0);
-        }
-      }
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      container.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
     };
-    const onUp = (e: MouseEvent) => {
-      if (ghostDragTypeRef.current && canvasRef.current) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
-          const inst = transformRef.current?.instance;
-          if (inst) {
-            const { positionX, positionY, scale } = inst.transformState;
-            const cx = (e.clientX - rect.left - positionX) / scale;
-            const cy = (e.clientY - rect.top - positionY) / scale;
-            onAddItem({ id: crypto.randomUUID(), label: ghostDragTypeRef.current === 'mindmap' ? '中心主题' : '', value: '', type: ghostDragTypeRef.current!, x: cx - 128, y: cy - 50, isNew: true });
-          }
-        }
-      }
-      ghostDragTypeRef.current = null;
-      setGhostDrag(null);
-      isSpacePanningRef.current = false;
-      spacePanStartRef.current = null;
-      isMiddlePanningRef.current = false;
-      middlePanStartRef.current = null;
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
-  }, [onAddItem]);
+  }, [viewMode, onAddItem]);
 
   const handleCanvasPointerDown = (e: React.PointerEvent) => {
-    const tgt = e.target as HTMLElement;
-    const isCanvasBg = tgt === e.currentTarget || tgt.id === 'canvas-bg';
-    if (!isCanvasBg) return;
-    // Middle mouse = pan
-    if (e.button === 1) {
-      e.preventDefault();
-      isMiddlePanningRef.current = true;
-      const inst = transformRef.current?.instance;
-      middlePanStartRef.current = { clientX: e.clientX, clientY: e.clientY, posX: inst?.transformState.positionX || 0, posY: inst?.transformState.positionY || 0 };
-      return;
-    }
-    if (e.button !== 0) return;
-    setIsAdding(false);
-    // Space + left = pan
-    if (spaceHeldRef.current) {
-      e.preventDefault();
-      isSpacePanningRef.current = true;
-      const inst = transformRef.current?.instance;
-      spacePanStartRef.current = { clientX: e.clientX, clientY: e.clientY, posX: inst?.transformState.positionX || 0, posY: inst?.transformState.positionY || 0 };
-      if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing';
-      return;
-    }
-    // Left drag = box select
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const inst = transformRef.current?.instance;
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
-    if (inst) { const { positionX, positionY, scale } = inst.transformState; x = (x - positionX) / scale; y = (y - positionY) / scale; }
-    pointerDownPosRef.current = { x, y };
-    pointerDownOnCanvasRef.current = true;
+    // Handled by native event listener above
   };
 
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
-    if (!pointerDownOnCanvasRef.current || !pointerDownPosRef.current) return;
-    if (spaceHeldRef.current) return;
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const inst = transformRef.current?.instance;
-    let x = e.clientX - rect.left;
-    let y = e.clientY - rect.top;
-    if (inst) { const { positionX, positionY, scale } = inst.transformState; x = (x - positionX) / scale; y = (y - positionY) / scale; }
-    const { x: sx, y: sy } = pointerDownPosRef.current;
-    if (!isBoxSelectingRef.current) {
-      if (Math.hypot(x - sx, y - sy) > 5) { isBoxSelectingRef.current = true; setSelectionBox({ startX: sx, startY: sy, endX: x, endY: y }); }
-    } else {
-      setSelectionBox(prev => prev ? { ...prev, endX: x, endY: y } : null);
-      const minX = Math.min(sx, x), maxX = Math.max(sx, x), minY = Math.min(sy, y), maxY = Math.max(sy, y);
-      const ns = new Set<string>();
-      group?.items.forEach(item => { const ix = item.x || 0, iy = item.y || 0; if (ix < maxX && ix + 256 > minX && iy < maxY && iy + 100 > minY) ns.add(item.id); });
-      setSelectedIds(ns);
-    }
+    // Handled by native event listener above
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent) => {
-    if (pointerDownOnCanvasRef.current && !isBoxSelectingRef.current) setSelectedIds(new Set());
-    pointerDownOnCanvasRef.current = false;
-    pointerDownPosRef.current = null;
-    isBoxSelectingRef.current = false;
-    setSelectionBox(null);
-    if (spaceHeldRef.current && canvasRef.current) canvasRef.current.style.cursor = 'grab';
-    isSpacePanningRef.current = false; spacePanStartRef.current = null;
-    isMiddlePanningRef.current = false; middlePanStartRef.current = null;
+    // Handled by native event listener above
   };
 
   if (!group) {
@@ -1012,11 +1170,10 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
 
   const handleQuickAdd = (type: ItemType) => {
       let x = 100, y = 100;
-      const ts = transformRef.current?.instance?.transformState;
-      if (ts && canvasRef.current) {
-          const rect = canvasRef.current.getBoundingClientRect();
-          x = (rect.width / 2 - ts.positionX) / ts.scale - 128;
-          y = (rect.height / 2 - ts.positionY) / ts.scale - 100;
+      if (outerScrollRef.current) {
+          const rect = outerScrollRef.current.getBoundingClientRect();
+          x = (rect.width / 2 + outerScrollRef.current.scrollLeft) / canvasScale - 128;
+          y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 100;
       }
       onAddItem({ id: crypto.randomUUID(), label: type === 'mindmap' ? '中心主题' : '', value: '', type, x, y, isNew: true });
   };
@@ -1025,11 +1182,10 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     e.preventDefault();
     if (newItemType !== 'image' || newItemValue) {
       let x = 100, y = 100;
-      const ts = transformRef.current?.instance?.transformState;
-      if (viewMode === 'canvas' && ts && canvasRef.current) {
-          const rect = canvasRef.current.getBoundingClientRect();
-          x = (rect.width / 2 - ts.positionX) / ts.scale - 128;
-          y = (rect.height / 2 - ts.positionY) / ts.scale - 100;
+      if (viewMode === 'canvas' && outerScrollRef.current) {
+          const rect = outerScrollRef.current.getBoundingClientRect();
+          x = (rect.width / 2 + outerScrollRef.current.scrollLeft) / canvasScale - 128;
+          y = (rect.height / 2 + outerScrollRef.current.scrollTop) / canvasScale - 100;
       }
       onAddItem({ id: crypto.randomUUID(), label: newItemLabel, value: newItemValue, type: newItemType, x, y });
       setNewItemLabel('');
@@ -1071,7 +1227,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
       />
 
       {/* Header */}
-      <div className="p-6 pb-4 border-b border-border flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 gap-4">
+      <div className="p-6 pb-4 border-b border-border flex items-center justify-between sticky top-0 bg-background/95 backdrop-blur z-10 gap-4 select-none">
         <div className="flex-1 overflow-hidden">
            <div className="flex items-center gap-2 text-xs text-gray-500 uppercase tracking-widest mb-1">
                 <span>配置列表</span>
@@ -1134,54 +1290,47 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
         </div>
       </div>
 
-      {/* Content Area */}
-      <div 
-        className={`flex-1 relative ${viewMode === 'canvas' ? 'overflow-hidden' : 'overflow-y-auto p-6'}`} 
-        ref={canvasRef}
-        onPointerDown={(e) => {
-            if (viewMode !== 'canvas' && e.target === e.currentTarget) {
-                setIsAdding(false);
-            }
-        }}
-      >
-        
+      {/* Workspace Wrapper for Fixed UIs */}
+      <div className="flex-1 relative flex flex-col overflow-hidden">
         {/* Left-side Milanote-style drag-to-create toolbar */}
         {viewMode === 'canvas' && (
             <>
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1.5 bg-[#1e293b]/90 backdrop-blur-md border border-white/[0.07] p-2 rounded-2xl shadow-2xl select-none">
+              <div className="toolbar-container absolute left-6 top-1/2 -translate-y-1/2 z-50 flex flex-col items-center gap-1.5 bg-[#18181b] border border-white/10 p-2 rounded-xl shadow-[4px_0_24px_rgba(0,0,0,0.5)] select-none">
                 {TOOL_ITEMS.map(({ type, icon: Icon, label, color }) => (
                   <div key={type} className="group relative"
                     onMouseDown={(e) => {
                       if (e.button !== 0) return;
                       e.preventDefault();
+                      e.stopPropagation();
                       ghostDragTypeRef.current = type;
                       setGhostDrag({ type, x: e.clientX, y: e.clientY });
                     }}
                   >
                     <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center cursor-grab active:cursor-grabbing transition-all duration-150 hover:scale-110 hover:brightness-125"
-                      style={{ background: `${color}22`, border: `1.5px solid ${color}55` }}
+                      className="w-11 h-11 rounded-xl flex items-center justify-center cursor-grab active:cursor-grabbing transition-all duration-200 hover:-translate-x-1.5 hover:scale-105 hover:brightness-125"
+                      style={{ background: `${color}22`, border: `1.5px solid ${color}55`, boxShadow: `0 4px 12px ${color}33` }}
                     >
-                      <Icon size={17} style={{ color }} />
+                      <Icon size={20} />
                     </div>
-                    <div className="absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 bg-[#1e293b] border border-white/10 text-white text-xs px-2.5 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-50">
+                    <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 bg-[#27272a] border border-white/10 text-gray-300 text-xs px-3 py-1.5 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
                       {label}
-                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent" style={{ borderRightColor: '#1e293b' }} />
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent" style={{ borderRightColor: '#27272a' }} />
                     </div>
                   </div>
                 ))}
-                <div className="w-6 h-px bg-white/10 my-0.5" />
+                <div className="w-6 h-px bg-white/10 my-1" />
                 <div className="group relative">
                   <button
                     onClick={() => setIsImporting(true)}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 hover:scale-110"
-                    style={{ background: '#3b82f622', border: '1.5px solid #3b82f655' }}
+                    className="w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200 hover:-translate-x-1.5 hover:scale-105 hover:brightness-125"
+                    style={{ background: '#3b82f622', border: '1.5px solid #3b82f655', boxShadow: '0 4px 12px #3b82f633' }}
                     title="智能导入"
                   >
-                    <Sparkles size={17} className="text-primary" />
+                    <Sparkles size={18} />
                   </button>
-                  <div className="absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 bg-[#1e293b] border border-white/10 text-white text-xs px-2.5 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-xl z-50">
+                  <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 bg-[#27272a] border border-white/10 text-gray-300 text-xs px-3 py-1.5 rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg z-50">
                     智能导入
+                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent" style={{ borderRightColor: '#27272a' }} />
                   </div>
                 </div>
               </div>
@@ -1190,24 +1339,53 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
               {ghostDrag && (
                 <div className="fixed pointer-events-none z-[9999]" style={{ left: ghostDrag.x + 12, top: ghostDrag.y - 24 }}>
                   <motion.div
-                    initial={{ scale: 0.5, opacity: 0, rotate: -4 }}
-                    animate={{ scale: 0.9, opacity: 0.92, rotate: 3 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 28 }}
-                    className="w-28 rounded-xl shadow-2xl border px-3 py-3 flex flex-col items-center gap-1.5"
-                    style={{
-                      background: `${TYPE_ACCENT[ghostDrag.type] || '#3b82f6'}18`,
-                      borderColor: `${TYPE_ACCENT[ghostDrag.type] || '#3b82f6'}60`,
-                      backdropFilter: 'blur(8px)',
-                    }}
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.15 }}
+                    className="w-28 rounded-lg shadow-xl border px-3 py-3 flex flex-col items-center gap-1.5 bg-[#27272a] border-white/10"
                   >
-                    {(() => { const t = TOOL_ITEMS.find(i => i.type === ghostDrag.type); const Icon = t?.icon || Type; return <Icon size={20} style={{ color: t?.color }} />; })()}
-                    <span className="text-xs text-white/80 font-medium">{TOOL_ITEMS.find(i => i.type === ghostDrag.type)?.label}</span>
+                    {(() => { const t = TOOL_ITEMS.find(i => i.type === ghostDrag.type); const Icon = t?.icon || Type; return <Icon size={20} className="text-gray-300" />; })()}
+                    <span className="text-xs text-gray-300 font-medium">{TOOL_ITEMS.find(i => i.type === ghostDrag.type)?.label}</span>
                   </motion.div>
                 </div>
               )}
+              
+              {/* Zoom Controls */}
+              <div className="absolute right-6 bottom-6 z-50 flex items-center gap-1 bg-[#18181b] border border-white/10 p-1.5 rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.5)] select-none">
+                <button 
+                   onClick={() => handleZoomCenter(Math.max(MIN_SCALE, canvasScale - 0.1))}
+                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#27272a] text-gray-400 hover:text-gray-100 transition-colors text-lg"
+                   title="缩小"
+                >−</button>
+                <div 
+                   className="w-14 text-center text-[13px] font-medium text-gray-400 hover:bg-[#27272a] py-1 rounded-lg cursor-pointer hover:text-gray-200 transition-colors" 
+                   onClick={() => handleZoomCenter(1)}
+                   title="恢复100%"
+                >
+                  {Math.round(canvasScale * 100)}%
+                </div>
+                <button 
+                   onClick={() => handleZoomCenter(Math.min(MAX_SCALE, canvasScale + 0.1))}
+                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#27272a] text-gray-400 hover:text-gray-100 transition-colors text-lg"
+                   title="放大"
+                >+</button>
+              </div>
             </>
         )}
 
+        
+
+        {/* Content Area */}
+      <div 
+        className={`flex-1 relative ${viewMode === 'canvas' ? 'overflow-auto custom-scrollbar-mac' : 'overflow-y-auto p-6 custom-scrollbar-mac'}`} 
+        ref={outerScrollRef}
+        onPointerDown={(e) => {
+            if (viewMode !== 'canvas' && e.target === e.currentTarget) {
+                setIsAdding(false);
+            }
+        }}
+      >
+        
         {/* Add Form (Static otherwise) */}
         {isAdding && viewMode !== 'canvas' && (
           <div className="mb-6">
@@ -1290,30 +1468,31 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
 
         {/* Canvas View */}
         {viewMode === 'canvas' ? (
-            <TransformWrapper
-                ref={transformRef}
-                initialScale={1}
-                minScale={MIN_SCALE}
-                maxScale={MAX_SCALE}
-                centerOnInit={true}
-                panning={{ disabled: true }}
-                wheel={{ disabled: true }}
-                pinch={{ excluded: ['nodrag'] }}
-                doubleClick={{ disabled: true }}
-                alignmentAnimation={{ disabled: true }}
-                zoomAnimation={{ disabled: true }}
+            <div 
+                ref={innerCanvasRef}
+                className="relative"
+                style={{
+                    width: CANVAS_SIZE * canvasScale,
+                    height: CANVAS_SIZE * canvasScale,
+                    backgroundColor: '#0f172a'
+                }}
             >
-                <TransformComponent wrapperStyle={{ width: '100%', height: '100%' }}>
-                    <div 
-                        id="canvas-bg"
-                        className="relative" 
-                        style={{ width: '4000px', height: '4000px', backgroundImage: 'radial-gradient(#334155 1px, transparent 1px)', backgroundSize: '24px 24px' }}
-                        onPointerDown={handleCanvasPointerDown}
-                        onPointerMove={handleCanvasPointerMove}
-                        onPointerUp={handleCanvasPointerUp}
-                    >
+                <motion.div
+                    id="canvas-bg"
+                    className="absolute left-0 top-0 origin-top-left flex-none"
+                    style={{ 
+                        width: CANVAS_SIZE, 
+                        height: CANVAS_SIZE, 
+                        scale: canvasScale,
+                        backgroundImage: 'radial-gradient(#334155 1.5px, transparent 1.5px)', 
+                        backgroundSize: '32px 32px' 
+                    }}
+                    onPointerDown={handleCanvasPointerDown}
+                    onPointerMove={handleCanvasPointerMove}
+                    onPointerUp={handleCanvasPointerUp}
+                >
                         {/* SVG Connection Lines */}
-                        <svg className="absolute left-0 top-0" style={{ width: '4000px', height: '4000px', pointerEvents: 'none', zIndex: 0 }}>
+                        <svg className="absolute left-0 top-0 pointer-events-none" style={{ width: CANVAS_SIZE, height: CANVAS_SIZE, zIndex: 0 }}>
                             {group.items.filter(i => i.parentId && i.type === 'mindmap').map(child => {
                                 const parent = group.items.find(p => p.id === child.parentId && p.type === 'mindmap');
                                 if (!parent) return null;
@@ -1445,11 +1624,19 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                                     }}
                                     group={group}
                                     selectedIds={selectedIds}
-                                    onUpdateMultiple={(dx, dy) => {
+                                    onDragStart={() => {
+                                        const origins: Record<string, {x: number, y: number}> = {};
+                                        selectedIds.forEach(sid => {
+                                            const it = group.items.find(i => i.id === sid);
+                                            if (it) origins[sid] = { x: it.x || 0, y: it.y || 0 };
+                                        });
+                                        draggedOriginsRef.current = origins;
+                                    }}
+                                    onUpdateMultiple={(totalDx, totalDy) => {
                                         selectedIds.forEach(id => {
-                                            const target = group.items.find(i => i.id === id);
-                                            if (target) {
-                                                onUpdateItem(id, { x: (target.x || 0) + dx, y: (target.y || 0) + dy });
+                                            const orig = draggedOriginsRef.current[id];
+                                            if (orig) {
+                                                onUpdateItem(id, { x: orig.x + totalDx, y: orig.y + totalDy });
                                             }
                                         });
                                     }}
@@ -1457,12 +1644,12 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                                     onDeleteItem={onDeleteItem}
                                     allItems={group.items}
                                     onSetGuides={setGuides}
+                                    canvasScale={canvasScale}
                                 />
                             );
                         })}
-                    </div>
-                </TransformComponent>
-            </TransformWrapper>
+                    </motion.div>
+            </div>
         ) : (
             /* List / Grid View */
             <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" : "space-y-2"}>
@@ -1485,6 +1672,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                 ))}
             </div>
         )}
+      </div>
       </div>
     </div>
   );

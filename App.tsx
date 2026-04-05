@@ -2,161 +2,92 @@ import React, { useState, useEffect } from 'react';
 import { SidebarProjects } from './components/SidebarProjects';
 import { SidebarGroups } from './components/SidebarGroups';
 import { ContentArea } from './components/ContentArea';
-import { Project, ProjectGroup, SecretItem } from './types';
+import { useBoardStore } from './store/useBoardStore';
 import { INITIAL_DATA } from './constants';
 import { Menu, X } from 'lucide-react';
 
-const LOCAL_STORAGE_KEY = 'config-vault-data-v1';
+const LOCAL_STORAGE_KEY = 'config-vault-data-v2';
+const LEGACY_STORAGE_KEY = 'config-vault-data-v1';
 
 export default function App() {
-  const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
-  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
-  
-  // Mobile nav state
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  const { projects, boards, addProject, deleteProject, addBoard, deleteBoard, migrateLegacyData } = useBoardStore();
+  const projectsList = Object.values(projects);
+  const boardsList = Object.values(boards);
+
+  const cardsMap = useBoardStore(state => state.cards);
 
   // Load Data
   useEffect(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved && saved !== 'undefined' && saved !== 'null') {
+    const savedV2 = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedV2 && savedV2 !== 'undefined' && savedV2 !== 'null') {
       try {
-        setProjects(JSON.parse(saved));
+        useBoardStore.setState(JSON.parse(savedV2));
       } catch (e) {
-        console.error("Failed to parse saved data", e);
-        setProjects(INITIAL_DATA);
+        console.error("Failed to parse saved v2 data", e);
       }
     } else {
-      setProjects(INITIAL_DATA);
+      const savedV1 = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (savedV1 && savedV1 !== 'undefined' && savedV1 !== 'null') {
+        try {
+          const oldData = JSON.parse(savedV1);
+          migrateLegacyData(oldData);
+        } catch (e) {
+          console.error("Failed to migrate v1 data", e);
+          migrateLegacyData(INITIAL_DATA as any);
+        }
+      } else {
+        migrateLegacyData(INITIAL_DATA as any);
+      }
     }
-  }, []);
+    setInitialized(true);
+  }, [migrateLegacyData]);
 
   // Save Data
   useEffect(() => {
-    if (projects.length > 0) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(projects));
+    if (initialized) {
+      const state = useBoardStore.getState();
+      const saveState = { projects: state.projects, boards: state.boards, cards: state.cards, connectors: state.connectors };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(saveState));
     }
-  }, [projects]);
+  }, [projects, boards, cardsMap, initialized]);
 
-  // Set initial active states if data exists and nothing selected
+  // Auto-select first project
   useEffect(() => {
-    if (projects.length > 0 && !activeProjectId) {
-      setActiveProjectId(projects[0].id);
+    if (initialized && projectsList.length > 0 && !activeProjectId) {
+      setActiveProjectId(projectsList[0].id);
     }
-  }, [projects, activeProjectId]);
+  }, [initialized, projectsList, activeProjectId]);
 
+  // Auto-select first board in project
   useEffect(() => {
-    const activeProj = projects.find(p => p.id === activeProjectId);
-    if (activeProj && activeProj.groups.length > 0 && !activeGroupId) {
-      setActiveGroupId(activeProj.groups[0].id);
-    } else if (activeProj && activeProj.groups.length === 0) {
-        setActiveGroupId(null);
-    }
-  }, [activeProjectId, projects]); // Depend on projects to auto-select new groups
-
-  // --- Actions ---
-
-  const addProject = (name: string) => {
-    const newProject: Project = {
-      id: crypto.randomUUID(),
-      name,
-      icon: 'Box', // Default icon
-      groups: []
-    };
-    setProjects(prev => [...prev, newProject]);
-    setActiveProjectId(newProject.id);
-  };
-
-  const deleteProject = (id: string) => {
-    setProjects(prev => prev.filter(p => p.id !== id));
-    if (activeProjectId === id) setActiveProjectId(null);
-  };
-
-  const addGroup = (name: string) => {
     if (!activeProjectId) return;
-    const newGroup: ProjectGroup = {
-      id: crypto.randomUUID(),
-      name,
-      items: []
-    };
-    setProjects(prev => prev.map(p => {
-      if (p.id === activeProjectId) {
-        return { ...p, groups: [...p.groups, newGroup] };
-      }
-      return p;
-    }));
-    setActiveGroupId(newGroup.id);
-  };
+    const projectBoards = boardsList.filter(b => b.projectId === activeProjectId);
+    
+    // If the currently active board doesn't belong to this project, switch it
+    const activeBoardBelongsToProject = activeBoardId && projectBoards.some(b => b.id === activeBoardId);
+    
+    if (projectBoards.length > 0 && (!activeBoardId || !activeBoardBelongsToProject)) {
+      setActiveBoardId(projectBoards[0].id);
+    } else if (projectBoards.length === 0) {
+      setActiveBoardId(null);
+    }
+  }, [activeProjectId, boardsList, activeBoardId]);
 
-  const deleteGroup = (projectId: string, groupId: string) => {
-    setProjects(prev => prev.map(p => {
-        if (p.id === projectId) {
-            return { ...p, groups: p.groups.filter(g => g.id !== groupId) };
-        }
-        return p;
-    }));
-    if (activeGroupId === groupId) setActiveGroupId(null);
-  };
+  if (!initialized) return <div className="h-screen w-full bg-background flex items-center justify-center text-gray-500">Loading Configuration...</div>;
 
-  const addItem = (item: SecretItem) => {
-    if (!activeProjectId || !activeGroupId) return;
-    setProjects(prev => prev.map(p => {
-      if (p.id === activeProjectId) {
-        const updatedGroups = p.groups.map(g => {
-          if (g.id === activeGroupId) {
-            return { ...g, items: [...g.items, item] };
-          }
-          return g;
-        });
-        return { ...p, groups: updatedGroups };
-      }
-      return p;
-    }));
-  };
-
-  const deleteItem = (itemId: string) => {
-    if (!activeProjectId || !activeGroupId) return;
-    setProjects(prev => prev.map(p => {
-        if (p.id === activeProjectId) {
-            const updatedGroups = p.groups.map(g => {
-                if (g.id === activeGroupId) {
-                    return { ...g, items: g.items.filter(i => i.id !== itemId) };
-                }
-                return g;
-            });
-            return { ...p, groups: updatedGroups };
-        }
-        return p;
-    }));
-  };
-
-  const updateItem = (itemId: string, updates: Partial<SecretItem>) => {
-    if (!activeProjectId || !activeGroupId) return;
-    setProjects(prev => prev.map(p => {
-        if (p.id === activeProjectId) {
-            const updatedGroups = p.groups.map(g => {
-                if (g.id === activeGroupId) {
-                    const newItems = g.items.map(i => i.id === itemId ? { ...i, ...updates } : i);
-                    return { ...g, items: newItems };
-                }
-                return g;
-            });
-            return { ...p, groups: updatedGroups };
-        }
-        return p;
-    }));
-  };
-
-  // --- Derived State ---
-  const activeProject = projects.find(p => p.id === activeProjectId) || null;
-  const activeGroup = activeProject?.groups.find(g => g.id === activeGroupId) || null;
+  const activeProject = activeProjectId ? projects[activeProjectId] : null;
+  const activeBoard = activeBoardId ? boards[activeBoardId] : null;
 
   return (
     <div className="flex flex-col md:flex-row h-screen w-full bg-background text-slate-200 overflow-hidden">
-      
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between p-4 border-b border-border bg-surface">
-        <span className="font-bold text-lg">ConfigVault</span>
+        <span className="font-bold text-lg">超级画板 - Milanote</span>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2">
            {mobileMenuOpen ? <X /> : <Menu />}
         </button>
@@ -171,32 +102,29 @@ export default function App() {
         flex flex-col md:flex-row
       `}>
           <SidebarProjects 
-            projects={projects} 
+            projects={projectsList} 
             activeProjectId={activeProjectId} 
-            onSelectProject={(id) => { setActiveProjectId(id); setActiveGroupId(null); if(window.innerWidth < 768) setMobileMenuOpen(false); }}
+            onSelectProject={(id) => { setActiveProjectId(id); if(window.innerWidth < 768) setMobileMenuOpen(false); }}
             onAddProject={addProject}
             onDeleteProject={deleteProject}
           />
 
           <SidebarGroups 
             activeProject={activeProject}
-            activeGroupId={activeGroupId}
-            onSelectGroup={(id) => { setActiveGroupId(id); if(window.innerWidth < 768) setMobileMenuOpen(false); }}
-            onAddGroup={addGroup}
-            onDeleteGroup={deleteGroup}
+            projectBoards={boardsList.filter(b => b.projectId === activeProjectId)}
+            activeBoardId={activeBoardId}
+            onSelectGroup={(id) => { setActiveBoardId(id); if(window.innerWidth < 768) setMobileMenuOpen(false); }}
+            onAddGroup={(name) => { if(activeProjectId) addBoard(activeProjectId, name); }}
+            onDeleteGroup={(id) => deleteBoard(id)}
           />
       </div>
 
-      {/* Content Area (Always visible on desktop, visible under menu on mobile) */}
+      {/* Content Area */}
       <div className="flex-1 h-full overflow-hidden relative z-0">
           <ContentArea 
-            group={activeGroup} 
-            onAddItem={addItem}
-            onDeleteItem={deleteItem}
-            onUpdateItem={updateItem}
+            activeBoard={activeBoard} 
           />
       </div>
-
     </div>
   );
 }
