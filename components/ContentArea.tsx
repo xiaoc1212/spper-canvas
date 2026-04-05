@@ -1,7 +1,7 @@
 import { ItemCard, DraggableItem } from './ItemCard';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ProjectGroup, SecretItem as Card, ItemType } from '../types';
-import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, Palette, GripVertical, Link2, ExternalLink, Crosshair } from 'lucide-react';
+import { Copy, Eye, EyeOff, Plus, Trash2, Check, Terminal, Key, Type, Save, LayoutGrid, List, Sparkles, X, ArrowRight, Image as ImageIcon, StickyNote, MousePointer2, Network, Palette, GripVertical, Link2, ExternalLink, Crosshair, Magnet } from 'lucide-react';
 import { motion, useMotionValue, useTransform, AnimatePresence } from 'motion/react';
 import TextareaAutosize from 'react-textarea-autosize';
 
@@ -231,6 +231,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
   const [newItemValue, setNewItemValue] = useState('');
   const [newItemType, setNewItemType] = useState<ItemType>('text');
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'canvas'>('canvas');
+  const [snapMode, setSnapMode] = useState(false);
   
   const outerScrollRef = useRef<HTMLDivElement>(null);
   const innerCanvasRef = useRef<HTMLDivElement>(null);
@@ -795,6 +796,12 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#27272a] text-gray-400 hover:text-gray-100 transition-colors"
                    title="回到中心"
                 ><Crosshair size={16} /></button>
+                <div className="w-px h-5 bg-white/10 mx-0.5" />
+                <button 
+                   onClick={() => setSnapMode(prev => !prev)}
+                   className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${snapMode ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40' : 'text-gray-400 hover:bg-[#27272a] hover:text-gray-100'}`}
+                   title={snapMode ? '关闭磁力吸附' : '开启磁力吸附'}
+                ><Magnet size={16} /></button>
               </div>
             </>
         )}
@@ -1071,6 +1078,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                                     allItems={group.items}
                                     onSetGuides={setGuides}
                                     canvasScale={canvasScale}
+                                    snapMode={snapMode}
                                 />
                             );
                         })}
