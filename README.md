@@ -1,20 +1,31 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 四象限冒险任务盘
 
-# Run and deploy your AI Studio app
+一个本地运行的四象限游戏化代办任务应用。
 
-This contains everything you need to run your app locally.
+## 功能
 
-View your app in AI Studio: https://ai.studio/apps/60708664-e21d-4a92-9869-316b0ceecf0b
+- 四象限任务分类：重要且紧急、重要但不紧急、不重要但紧急、不重要也不紧急
+- 任务卡片展开子任务
+- 子任务勾选与进度条
+- S / A / B / C 优先级
+- 提醒时间显示与 24 小时内提醒高亮
+- 金币奖励、完成统计、本地保存
+- 偏游戏 HUD / 卡片反馈风格
 
-## Run Locally
+## 本地启动
 
-**Prerequisites:**  Node.js
+```bash
+python3 -m http.server 4173
+```
 
+然后打开：
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```text
+http://127.0.0.1:4173
+```
+
+## 测试
+
+```bash
+npm test
+```
